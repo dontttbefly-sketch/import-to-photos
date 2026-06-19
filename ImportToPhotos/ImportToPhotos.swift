@@ -1,21 +1,6 @@
 import AppKit
-import Darwin
 import Foundation
 import Photos
-import UniformTypeIdentifiers
-
-private let uploadedMarkerAttributeName = "local.import-to-photos.uploaded"
-
-private let supportedExtensions: Set<String> = [
-    "jpg", "jpeg", "png", "heic", "heif", "gif", "tif", "tiff", "bmp", "webp",
-    "dng", "cr2", "cr3", "nef", "arw", "raf", "rw2", "orf"
-]
-
-private struct UploadedMarker: Codable {
-    let version: Int
-    let importedAt: String
-    let appIdentifier: String
-}
 
 private struct ImportFailure {
     let url: URL
@@ -27,44 +12,48 @@ private struct ImageSelection {
     let skippedImages: [URL]
 }
 
-private func defaultImportFolder() -> URL {
-    if let configuredFolder = Bundle.main.url(forResource: "DefaultImportFolder", withExtension: "txt"),
-       let configuredPath = try? String(contentsOf: configuredFolder, encoding: .utf8)
-        .trimmingCharacters(in: .whitespacesAndNewlines),
-       !configuredPath.isEmpty {
-        return URL(fileURLWithPath: configuredPath).standardizedFileURL
-    }
+private struct FinderSyncCopyJob {
+    let sourceURL: URL
+    let backupURL: URL
+}
 
-    let bundleURL = Bundle.main.bundleURL
-    if bundleURL.pathExtension.lowercased() == "app" {
-        return bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+private func logImportToPhotos(_ message: String) {
+    let logDirectory = URL(fileURLWithPath: "/tmp/local.import-to-photos", isDirectory: true)
+    let logURL = logDirectory.appendingPathComponent("app.log", isDirectory: false)
+
+    do {
+        try FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] \(message)\n"
+        guard let data = line.data(using: .utf8) else {
+            return
+        }
+
+        if FileManager.default.fileExists(atPath: logURL.path),
+           let handle = try? FileHandle(forWritingTo: logURL) {
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+            try handle.close()
+        } else {
+            try data.write(to: logURL)
+        }
+    } catch {
+        NSLog("ImportToPhotos log failed: \(error.localizedDescription)")
     }
-    return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 }
 
 private func normalizedInputURLs(from arguments: [String]) -> [URL] {
-    let paths = arguments.dropFirst().filter { !$0.hasPrefix("-") }
-    if paths.isEmpty {
+    let urls = explicitInputURLs(from: arguments)
+    if urls.isEmpty {
         return [defaultImportFolder()]
     }
-    return paths.map { URL(fileURLWithPath: $0).standardizedFileURL }
+    return urls
 }
 
-private func isSupportedImage(_ url: URL, contentType: UTType?) -> Bool {
-    let ext = url.pathExtension.lowercased()
-    if supportedExtensions.contains(ext) {
-        return true
-    }
-
-    guard let contentType else {
-        return false
-    }
-
-    if contentType == .svg || contentType == .pdf || contentType.identifier == "com.apple.icns" {
-        return false
-    }
-
-    return contentType.conforms(to: .image)
+private func explicitInputURLs(from arguments: [String]) -> [URL] {
+    arguments.dropFirst()
+        .filter { !$0.hasPrefix("-") }
+        .map { URL(fileURLWithPath: $0).standardizedFileURL }
 }
 
 private func collectImages(from inputs: [URL]) -> [URL] {
@@ -155,35 +144,6 @@ private func collectImages(from inputs: [URL]) -> [URL] {
     return results.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
 }
 
-private func hasUploadedMarker(_ url: URL) -> Bool {
-    let result = getxattr(url.path, uploadedMarkerAttributeName, nil, 0, 0, 0)
-    return result >= 0
-}
-
-private func uploadedMarkerData() throws -> Data {
-    let marker = UploadedMarker(
-        version: 1,
-        importedAt: ISO8601DateFormatter().string(from: Date()),
-        appIdentifier: Bundle.main.bundleIdentifier ?? "local.import-to-photos"
-    )
-    return try JSONEncoder().encode(marker)
-}
-
-private func writeUploadedMarker(to url: URL) -> String? {
-    do {
-        let data = try uploadedMarkerData()
-        let result = data.withUnsafeBytes { buffer in
-            setxattr(url.path, uploadedMarkerAttributeName, buffer.baseAddress, data.count, 0, 0)
-        }
-        guard result == 0 else {
-            return NSError(domain: NSPOSIXErrorDomain, code: Int(errno)).localizedDescription
-        }
-        return nil
-    } catch {
-        return error.localizedDescription
-    }
-}
-
 private func partitionUploadedImages(_ images: [URL]) -> ImageSelection {
     var newImages: [URL] = []
     var skippedImages: [URL] = []
@@ -210,6 +170,213 @@ private func showAlert(title: String, message: String) {
         alert.runModal()
         NSApp.terminate(nil)
     }
+}
+
+private var transientNoticePanel: NSPanel?
+
+private func showTimedNotice(
+    _ message: String,
+    terminateAfterClose: Bool = true,
+    completion: (() -> Void)? = nil
+) {
+    DispatchQueue.main.async {
+        NSApp.setActivationPolicy(.accessory)
+        let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let textWidth = ceil((message as NSString).size(withAttributes: [.font: font]).width)
+        let size = NSSize(width: min(max(textWidth + 74, 156), 220), height: 44)
+        let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
+        let finalFrame = NSRect(
+            x: screenFrame.maxX - size.width - 28,
+            y: screenFrame.maxY - size.height - 34,
+            width: size.width,
+            height: size.height
+        )
+        let initialFrame = finalFrame.offsetBy(dx: 0, dy: 8)
+        let exitFrame = finalFrame.offsetBy(dx: 0, dy: 6)
+
+        let panel = NSPanel(
+            contentRect: initialFrame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        panel.level = .statusBar
+        panel.alphaValue = 0
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.ignoresMouseEvents = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
+
+        let container = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
+        container.material = .hudWindow
+        container.blendingMode = .behindWindow
+        container.state = .active
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 14
+        container.layer?.masksToBounds = true
+        container.layer?.borderWidth = 0.5
+        container.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
+
+        let symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+        let icon = NSImageView(frame: NSRect(x: 16, y: 13, width: 18, height: 18))
+        let symbol = NSImage(
+            systemSymbolName: noticeSymbolName(for: message),
+            accessibilityDescription: message
+        )?.withSymbolConfiguration(symbolConfiguration)
+        symbol?.isTemplate = true
+        icon.image = symbol
+        icon.contentTintColor = noticeTintColor(for: message)
+        icon.imageScaling = .scaleProportionallyDown
+        container.addSubview(icon)
+
+        let label = NSTextField(labelWithString: message)
+        label.alignment = .center
+        label.font = font
+        label.textColor = .labelColor
+        label.frame = NSRect(x: 42, y: 12, width: size.width - 58, height: 20)
+        label.lineBreakMode = .byTruncatingTail
+        container.addSubview(label)
+
+        panel.contentView = container
+        transientNoticePanel = panel
+        panel.orderFrontRegardless()
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+            panel.animator().setFrame(finalFrame, display: true)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.65) {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                panel.animator().alphaValue = 0
+                panel.animator().setFrame(exitFrame, display: true)
+            } completionHandler: {
+                transientNoticePanel?.close()
+                transientNoticePanel = nil
+                completion?()
+                if terminateAfterClose {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
+}
+
+private func noticeSymbolName(for message: String) -> String {
+    switch message {
+    case "已同步相册", "已同步过":
+        return "checkmark.circle"
+    case "需要授权":
+        return "lock"
+    case "同步失败", "部分失败":
+        return "xmark.circle"
+    default:
+        return "checkmark.circle"
+    }
+}
+
+private func noticeTintColor(for message: String) -> NSColor {
+    switch message {
+    default:
+        return .white
+    }
+}
+
+private func nextAvailableBackupURL(for sourceURL: URL, in uploadFolder: URL) -> URL {
+    let fileManager = FileManager.default
+    let source = sourceURL.standardizedFileURL
+    let folder = uploadFolder.standardizedFileURL
+
+    if source.deletingLastPathComponent().path == folder.path {
+        return source
+    }
+
+    let baseName = source.deletingPathExtension().lastPathComponent
+    let fileExtension = source.pathExtension
+    var candidate = folder.appendingPathComponent(source.lastPathComponent)
+    var suffix = 2
+
+    while fileManager.fileExists(atPath: candidate.path) {
+        let fileName = fileExtension.isEmpty
+            ? "\(baseName) \(suffix)"
+            : "\(baseName) \(suffix).\(fileExtension)"
+        candidate = folder.appendingPathComponent(fileName)
+        suffix += 1
+    }
+
+    return candidate.standardizedFileURL
+}
+
+private func prepareFinderSyncCopyJobs(from sourceURLs: [URL]) -> (jobs: [FinderSyncCopyJob], failures: [ImportFailure]) {
+    let fileManager = FileManager.default
+    let uploadFolder = defaultImportFolder()
+    var jobs: [FinderSyncCopyJob] = []
+    var failures: [ImportFailure] = []
+
+    do {
+        try fileManager.createDirectory(at: uploadFolder, withIntermediateDirectories: true)
+    } catch {
+        return ([], sourceURLs.map { ImportFailure(url: $0, message: error.localizedDescription) })
+    }
+
+    for sourceURL in sourceURLs {
+        let source = sourceURL.standardizedFileURL
+        guard isFinderSyncEligibleImage(source) else {
+            failures.append(ImportFailure(url: source, message: "Not eligible"))
+            continue
+        }
+
+        let backup = nextAvailableBackupURL(for: source, in: uploadFolder)
+        if backup.path != source.path {
+            do {
+                try fileManager.copyItem(at: source, to: backup)
+            } catch {
+                logImportToPhotos("prepare copy failed source=\(source.path) backup=\(backup.path) error=\(error.localizedDescription)")
+                failures.append(ImportFailure(url: source, message: error.localizedDescription))
+                continue
+            }
+        }
+
+        jobs.append(FinderSyncCopyJob(sourceURL: source, backupURL: backup))
+    }
+
+    return (jobs, failures)
+}
+
+private func runFinderSyncCopyTest(with sourceURLs: [URL]) -> Int32 {
+    let result = prepareFinderSyncCopyJobs(from: sourceURLs)
+
+    for job in result.jobs {
+        if job.sourceURL.path == job.backupURL.path {
+            print("USING_SOURCE \(job.sourceURL.path)")
+        } else {
+            print("COPIED \(job.backupURL.path)")
+        }
+
+        if let error = writeUploadedMarker(to: job.sourceURL) {
+            print("MARK_SOURCE_FAILED \(job.sourceURL.path): \(error)")
+        } else {
+            print("MARKED_SOURCE \(job.sourceURL.path)")
+        }
+
+        if let error = writeUploadedMarker(to: job.backupURL) {
+            print("MARK_BACKUP_FAILED \(job.backupURL.path): \(error)")
+        } else {
+            print("MARKED_BACKUP \(job.backupURL.path)")
+        }
+    }
+
+    for failure in result.failures {
+        print("FAILED \(failure.url.path): \(failure.message)")
+    }
+
+    return result.failures.isEmpty && !result.jobs.isEmpty ? 0 : 1
 }
 
 private func requestPhotosAccess(completion: @escaping (Bool) -> Void) {
@@ -290,6 +457,69 @@ private func importImages(
     }
 }
 
+private func importFinderSyncCopyJobs(
+    _ jobs: [FinderSyncCopyJob],
+    index: Int = 0,
+    imported: Int = 0,
+    failures: [ImportFailure] = [],
+    terminateAfterNotice: Bool = true,
+    completion: (() -> Void)? = nil
+) {
+    guard index < jobs.count else {
+        let message: String
+        if failures.isEmpty && imported > 0 {
+            message = "已同步相册"
+        } else if imported > 0 {
+            message = "部分失败"
+        } else {
+            message = "同步失败"
+        }
+        if !failures.isEmpty {
+            let details = failures.prefix(5)
+                .map { "\($0.url.path): \($0.message)" }
+                .joined(separator: " | ")
+            logImportToPhotos("finder sync import finished message=\(message) imported=\(imported) failures=\(failures.count) details=\(details)")
+        } else {
+            logImportToPhotos("finder sync import finished message=\(message) imported=\(imported) failures=0")
+        }
+        showTimedNotice(message, terminateAfterClose: terminateAfterNotice, completion: completion)
+        return
+    }
+
+    let job = jobs[index]
+    PHPhotoLibrary.shared().performChanges({
+        PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: job.backupURL)
+    }) { success, error in
+        var nextFailures = failures
+        var nextImported = imported
+
+        if success {
+            nextImported += 1
+            if let markerError = writeUploadedMarker(to: job.backupURL) {
+                nextFailures.append(ImportFailure(url: job.backupURL, message: markerError))
+            }
+            if job.sourceURL.path != job.backupURL.path,
+               let markerError = writeUploadedMarker(to: job.sourceURL) {
+                nextFailures.append(ImportFailure(url: job.sourceURL, message: markerError))
+            }
+        } else {
+            nextFailures.append(ImportFailure(
+                url: job.backupURL,
+                message: error?.localizedDescription ?? "Unknown error"
+            ))
+        }
+
+        importFinderSyncCopyJobs(
+            jobs,
+            index: index + 1,
+            imported: nextImported,
+            failures: nextFailures,
+            terminateAfterNotice: terminateAfterNotice,
+            completion: completion
+        )
+    }
+}
+
 private func printUsage() {
     print("""
     ImportToPhotos
@@ -297,22 +527,34 @@ private func printUsage() {
     Usage:
       ImportToPhotos [folder-or-image ...]
       ImportToPhotos --dry-run [folder-or-image ...]
+      ImportToPhotos --sync-copy [image ...]
+      ImportToPhotos --background-agent
 
     If no path is provided, the app imports the folder that contains ImportToPhotos.app.
     Successfully imported files are marked with the \(uploadedMarkerAttributeName) extended attribute.
     """)
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let launchURLs: [URL]
-    private var hasStarted = false
+private enum LaunchMode {
+    case standardImport
+    case finderSyncCopy
+    case backgroundAgent
+}
 
-    init(launchURLs: [URL]) {
+private final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let launchURLs: [URL]
+    private let launchMode: LaunchMode
+    private var hasStarted = false
+    private var agentJobTimer: Timer?
+    private var isProcessingAgentJob = false
+
+    init(launchURLs: [URL], launchMode: LaunchMode) {
         self.launchURLs = launchURLs
+        self.launchMode = launchMode
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(.accessory)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             if !self.hasStarted {
                 self.start(with: self.launchURLs)
@@ -328,6 +570,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func start(with urls: [URL]) {
         hasStarted = true
+        switch launchMode {
+        case .standardImport:
+            startStandardImport(with: urls)
+        case .finderSyncCopy:
+            startFinderSyncCopy(with: urls)
+        case .backgroundAgent:
+            startBackgroundAgent()
+        }
+    }
+
+    private func startBackgroundAgent() {
+        logImportToPhotos("background agent started jobDirectory=\(finderSyncJobDirectory().path)")
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(finderSyncJobPosted(_:)),
+            name: finderSyncJobNotificationName,
+            object: nil
+        )
+        agentJobTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
+            self?.processPendingFinderSyncJobs()
+        }
+        processPendingFinderSyncJobs()
+    }
+
+    @objc private func finderSyncJobPosted(_ notification: Notification) {
+        processPendingFinderSyncJobs()
+    }
+
+    private func processPendingFinderSyncJobs() {
+        guard !isProcessingAgentJob else {
+            return
+        }
+
+        let fileManager = FileManager.default
+        let directory = finderSyncJobDirectory()
+        let jobURLs = (try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ))?
+            .filter { $0.pathExtension == "json" }
+            .sorted { lhs, rhs in
+                let lhsDate = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let rhsDate = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return lhsDate < rhsDate
+            } ?? []
+
+        guard let jobURL = jobURLs.first else {
+            return
+        }
+
+        isProcessingAgentJob = true
+        let processingURL = jobURL
+            .deletingPathExtension()
+            .appendingPathExtension("processing")
+
+        do {
+            try? fileManager.removeItem(at: processingURL)
+            try fileManager.moveItem(at: jobURL, to: processingURL)
+            let data = try Data(contentsOf: processingURL)
+            let job = try JSONDecoder().decode(FinderSyncQueuedJob.self, from: data)
+            try? fileManager.removeItem(at: processingURL)
+
+            let urls = job.paths.map { URL(fileURLWithPath: $0).standardizedFileURL }
+            logImportToPhotos("agent processing sync job id=\(job.id) paths=\(job.paths.joined(separator: " | "))")
+            startFinderSyncCopy(with: urls, terminateAfterNotice: false) { [weak self] in
+                self?.isProcessingAgentJob = false
+                self?.processPendingFinderSyncJobs()
+            }
+        } catch {
+            logImportToPhotos("agent sync job failed url=\(jobURL.path) error=\(error.localizedDescription)")
+            try? fileManager.removeItem(at: jobURL)
+            try? fileManager.removeItem(at: processingURL)
+            showTimedNotice("同步失败", terminateAfterClose: false) { [weak self] in
+                self?.isProcessingAgentJob = false
+                self?.processPendingFinderSyncJobs()
+            }
+        }
+    }
+
+    private func startStandardImport(with urls: [URL]) {
         let inputs = urls.isEmpty ? [defaultImportFolder()] : urls
         let images = collectImages(from: inputs)
         let selection = partitionUploadedImages(images)
@@ -356,39 +679,116 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             importImages(selection.newImages, skippedCount: selection.skippedImages.count)
         }
     }
-}
 
-let arguments = CommandLine.arguments
-if arguments.contains("--help") || arguments.contains("-h") {
-    printUsage()
-    exit(0)
-}
+    private func startFinderSyncCopy(
+        with urls: [URL],
+        terminateAfterNotice: Bool = true,
+        completion: (() -> Void)? = nil
+    ) {
+        guard !urls.isEmpty else {
+            logImportToPhotos("finder sync copy failed reason=empty-urls")
+            showTimedNotice("同步失败", terminateAfterClose: terminateAfterNotice, completion: completion)
+            return
+        }
 
-let inputURLs = normalizedInputURLs(from: arguments)
-if arguments.contains("--dry-run") {
-    let images = collectImages(from: inputURLs)
-    let selection = partitionUploadedImages(images)
-    print("Found \(images.count) supported image(s).")
-    print("New images: \(selection.newImages.count)")
-    print("Skipped marked images: \(selection.skippedImages.count)")
+        if urls.allSatisfy(hasUploadedMarker) {
+            logImportToPhotos("finder sync copy skipped reason=already-marked urls=\(urls.map(\.path).joined(separator: " | "))")
+            showTimedNotice("已同步过", terminateAfterClose: terminateAfterNotice, completion: completion)
+            return
+        }
 
-    if !selection.newImages.isEmpty {
-        print("\nNew:")
-        for image in selection.newImages {
-            print("NEW \(image.path)")
+        let result = prepareFinderSyncCopyJobs(from: urls)
+        guard !result.jobs.isEmpty else {
+            let details = result.failures.prefix(5)
+                .map { "\($0.url.path): \($0.message)" }
+                .joined(separator: " | ")
+            logImportToPhotos("finder sync copy failed reason=no-jobs failures=\(result.failures.count) details=\(details)")
+            showTimedNotice(
+                result.failures.isEmpty ? "已同步过" : "同步失败",
+                terminateAfterClose: terminateAfterNotice,
+                completion: completion
+            )
+            return
+        }
+
+        requestPhotosAccess { allowed in
+            guard allowed else {
+                logImportToPhotos("finder sync copy failed reason=photos-access-denied")
+                showTimedNotice("需要授权", terminateAfterClose: terminateAfterNotice, completion: completion)
+                return
+            }
+            importFinderSyncCopyJobs(
+                result.jobs,
+                terminateAfterNotice: terminateAfterNotice,
+                completion: completion
+            )
         }
     }
-
-    if !selection.skippedImages.isEmpty {
-        print("\nSkipped:")
-        for image in selection.skippedImages {
-            print("SKIPPED \(image.path)")
-        }
-    }
-    exit(0)
 }
 
-let app = NSApplication.shared
-let delegate = AppDelegate(launchURLs: inputURLs)
-app.delegate = delegate
-app.run()
+@main
+struct ImportToPhotosMain {
+    static func main() {
+        let arguments = CommandLine.arguments
+        if arguments.contains("--help") || arguments.contains("-h") {
+            printUsage()
+            exit(0)
+        }
+
+        if arguments.contains("--menu-eligible") {
+            let urls = explicitInputURLs(from: arguments)
+            if isFinderSyncEligibleSelection(urls) {
+                print("ELIGIBLE")
+                exit(0)
+            }
+
+            print("INELIGIBLE")
+            exit(1)
+        }
+
+        if arguments.contains("--sync-copy-test-run") {
+            let urls = explicitInputURLs(from: arguments)
+            exit(runFinderSyncCopyTest(with: urls))
+        }
+
+        let launchMode: LaunchMode
+        if arguments.contains("--background-agent") {
+            launchMode = .backgroundAgent
+        } else if arguments.contains("--sync-copy") {
+            launchMode = .finderSyncCopy
+        } else {
+            launchMode = .standardImport
+        }
+
+        let inputURLs = launchMode == .finderSyncCopy
+            ? explicitInputURLs(from: arguments)
+            : normalizedInputURLs(from: arguments)
+        if arguments.contains("--dry-run") {
+            let images = collectImages(from: inputURLs)
+            let selection = partitionUploadedImages(images)
+            print("Found \(images.count) supported image(s).")
+            print("New images: \(selection.newImages.count)")
+            print("Skipped marked images: \(selection.skippedImages.count)")
+
+            if !selection.newImages.isEmpty {
+                print("\nNew:")
+                for image in selection.newImages {
+                    print("NEW \(image.path)")
+                }
+            }
+
+            if !selection.skippedImages.isEmpty {
+                print("\nSkipped:")
+                for image in selection.skippedImages {
+                    print("SKIPPED \(image.path)")
+                }
+            }
+            exit(0)
+        }
+
+        let app = NSApplication.shared
+        let delegate = AppDelegate(launchURLs: inputURLs, launchMode: launchMode)
+        app.delegate = delegate
+        app.run()
+    }
+}
