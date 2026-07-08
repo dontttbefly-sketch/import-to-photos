@@ -8,9 +8,7 @@
 	<true/>
 	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
-		<string>/Desktop/</string>
-		<string>/Pictures/</string>
-		<string>/Downloads/</string>
+		<string>/</string>
 	</array>
 </dict>
 </plist>

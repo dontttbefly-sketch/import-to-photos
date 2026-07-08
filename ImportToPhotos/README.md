@@ -5,24 +5,38 @@ This folder contains the macOS app source. See the root [README.md](../README.md
 Quick build:
 
 ```sh
-./build.sh
+./Scripts/build.sh
+```
+
+Build a universal app for release:
+
+```sh
+./Scripts/build.sh --universal
+```
+
+Create a GitHub Release zip:
+
+```sh
+./Scripts/package_release.sh --universal
 ```
 
 Install the Finder right-click menu:
 
 ```sh
-./install_finder_extension.sh
+./Scripts/install_finder_extension.sh
 ```
 
 Quick dry-run:
 
 ```sh
-./ImportToPhotos.app/Contents/MacOS/ImportToPhotos --dry-run /path/to/folder
+./dist/ImportToPhotos.app/Contents/MacOS/ImportToPhotos --dry-run /path/to/folder
 ```
 
 Regression tests:
 
 ```sh
-./test_marker_behavior.sh
-./test_finder_sync_behavior.sh
+./Scripts/test_marker_behavior.sh
+./Scripts/test_finder_sync_behavior.sh
+./Scripts/test_right_click_experience.sh
+./Scripts/test_release_package.sh
 ```

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/ImportToPhotos.app/Contents/MacOS/ImportToPhotos"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+BINARY="$ROOT_DIR/dist/ImportToPhotos.app/Contents/MacOS/ImportToPhotos"
 MARKER_NAME="local.import-to-photos.uploaded"
 MARKER_VALUE='{"version":1,"importedAt":"2026-05-15T00:00:00Z","appIdentifier":"local.import-to-photos"}'
 
@@ -20,6 +21,7 @@ PNG
 
 cp "$TMP_DIR/source.png" "$TMP_DIR/unmarked.png"
 cp "$TMP_DIR/source.png" "$TMP_DIR/marked.png"
+printf "not a real image\n" > "$TMP_DIR/fake.avif"
 rm "$TMP_DIR/source.png"
 xattr -w "$MARKER_NAME" "$MARKER_VALUE" "$TMP_DIR/marked.png"
 
@@ -29,3 +31,12 @@ grep -q "New images: 1" <<< "$OUTPUT"
 grep -q "Skipped marked images: 1" <<< "$OUTPUT"
 grep -q "NEW .*unmarked.png" <<< "$OUTPUT"
 grep -q "SKIPPED .*marked.png" <<< "$OUTPUT"
+if grep -q "fake.avif" <<< "$OUTPUT"; then
+  echo "Dry-run should not include fake known-extension images that ImageIO cannot open." >&2
+  exit 1
+fi
+
+cp "$TMP_DIR/unmarked.png" "$TMP_DIR/-dash.png"
+DASH_OUTPUT="$("$BINARY" --dry-run -- "$TMP_DIR/-dash.png")"
+grep -q "Found 1 supported image(s)." <<< "$DASH_OUTPUT"
+grep -q "NEW .*\\-dash.png" <<< "$DASH_OUTPUT"

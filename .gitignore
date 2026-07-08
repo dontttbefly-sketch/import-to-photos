@@ -1,4 +1,14 @@
 .DS_Store
+Thumbs.db
+
+# Secrets and private runtime state.
+.env
+.env.*
+!.env.example
+.state/
+node_modules/
+rules.json
+*.log
 
 # Local/private photos in this workspace root.
 /*.png
@@ -14,13 +24,15 @@
 
 # Local machine configuration.
 ImportToPhotos/DefaultImportFolder.txt
+ImportToPhotos/Resources/DefaultImportFolder.txt
 
 # Build products and generated assets.
 ImportToPhotos/.build/
+ImportToPhotos/dist/
 ImportToPhotos/ImportToPhotos.app/
 ImportToPhotos/ImportToPhotos.icns
 ImportToPhotos/ImportToPhotos.iconset/
+ImportToPhotos/docs/superpowers/
 
 # macOS metadata files.
 Icon?
-
