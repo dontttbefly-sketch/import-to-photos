@@ -233,7 +233,18 @@ if grep -q 'URL(fileURLWithPath: "/tmp/local.import-to-photos"' "$APP_SOURCE_DIR
 fi
 grep -q "prepareCopyJobs" "$FINDER_COPY_SOURCE"
 grep -q "runCopyTest" "$FINDER_COPY_SOURCE"
-grep -q "contentsEqual" "$FINDER_COPY_SOURCE"
+grep -q "backupURL: source" "$FINDER_COPY_SOURCE"
+grep -q "USING_SOURCE" "$FINDER_COPY_SOURCE"
+grep -q "sourceURL.path != job.backupURL.path" "$FINDER_COPY_SOURCE"
+if grep -q "copyItem" "$FINDER_COPY_SOURCE"; then
+  echo "Finder sync default behavior should import the selected source directly, not copy it first." >&2
+  exit 1
+fi
+if grep -q "MARKED_BACKUP" "$FINDER_COPY_SOURCE" &&
+   ! grep -q "sourceURL.path != job.backupURL.path" "$FINDER_COPY_SOURCE"; then
+  echo "Backup marker writes must stay guarded for optional future keep-copy behavior." >&2
+  exit 1
+fi
 grep -q "ImportSupportStatus" "$IMAGE_POLICY_SOURCE"
 grep -q "possibleRaw" "$IMAGE_POLICY_SOURCE"
 grep -q "supportSummary" "$IMAGE_POLICY_SOURCE"
@@ -254,7 +265,13 @@ plutil -lint "$SERVICE_WORKFLOW/Contents/Info.plist" "$SERVICE_WORKFLOW/Contents
 grep -q "★ 同步进相册" "$SERVICE_WORKFLOW/Contents/Info.plist"
 grep -q "★ 同步进相册.workflow" "$SCRIPT_DIR/install_finder_extension.sh"
 grep -q "OLD_SERVICE_INSTALL_DIR" "$SCRIPT_DIR/install_finder_extension.sh"
-grep -q "/Applications/ImportToPhotos.app/Contents/MacOS/ImportToPhotos --sync-copy" "$SERVICE_WORKFLOW/Contents/Resources/document.wflow"
+grep -q "/Applications/ImportToPhotos.app/Contents/MacOS/ImportToPhotos --sync-import" "$SERVICE_WORKFLOW/Contents/Resources/document.wflow"
+grep -q -- "--sync-import" "$APP_SOURCE_DIR/CommandLineOptions.swift"
+grep -q -- "--sync-copy" "$APP_SOURCE_DIR/CommandLineOptions.swift"
+if grep -q -- "--sync-copy" "$SERVICE_WORKFLOW/Contents/Resources/document.wflow"; then
+  echo "Service workflow should use --sync-import; --sync-copy is only a legacy compatibility alias." >&2
+  exit 1
+fi
 grep -q "<key>serviceApplicationBundleID</key>" "$SERVICE_WORKFLOW/Contents/Resources/document.wflow"
 if grep -q "<string>com.apple.finder</string>" "$SERVICE_WORKFLOW/Contents/Resources/document.wflow"; then
   echo "Workflow should not be pinned to Finder only; match system Quick Actions metadata." >&2

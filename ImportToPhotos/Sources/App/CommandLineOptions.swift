@@ -18,6 +18,7 @@ struct CommandLineOptions {
         "--queue-recovery-test-run",
         "--queue-retry-test-run",
         "--dry-run",
+        "--sync-import",
         "--sync-copy",
         "--background-agent"
     ]
@@ -50,7 +51,7 @@ struct CommandLineOptions {
         self.arguments = arguments
         if arguments.contains("--background-agent") {
             launchMode = .backgroundAgent
-        } else if arguments.contains("--sync-copy") {
+        } else if arguments.contains("--sync-import") || arguments.contains("--sync-copy") {
             launchMode = .finderSyncCopy
         } else {
             launchMode = .standardImport
@@ -108,10 +109,11 @@ func printUsage() {
       ImportToPhotos [folder-or-image ...]
       ImportToPhotos --dry-run [folder-or-image ...]
       ImportToPhotos --image-support-check [image ...]
-      ImportToPhotos --sync-copy [image ...]
+      ImportToPhotos --sync-import [image ...]
       ImportToPhotos --background-agent
 
     If no path is provided, the app uses the configured default folder or ~/Pictures/ImportToPhotos.
+    Finder right-click mode imports selected source files directly without staging copies.
     Successfully imported files are marked with the \(AppConfig.uploadedMarkerAttributeName) extended attribute.
     """)
 }

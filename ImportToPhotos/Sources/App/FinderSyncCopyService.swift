@@ -35,11 +35,9 @@ enum QueueResolution {
 
 final class FinderSyncCopyService {
     private let importer: PhotosImporting
-    private let fileManager: FileManager
 
-    init(importer: PhotosImporting, fileManager: FileManager = .default) {
+    init(importer: PhotosImporting) {
         self.importer = importer
-        self.fileManager = fileManager
     }
 
     func synchronize(
@@ -126,54 +124,17 @@ final class FinderSyncCopyService {
     }
 
     func prepareCopyJobs(from sourceURLs: [URL], stagedPaths: [String] = []) -> FinderSyncCopyPreparation {
-        let uploadFolder = AppConfig.defaultImportFolder()
         var jobs: [FinderSyncCopyJob] = []
         var failures: [ImportFailure] = []
 
-        do {
-            try fileManager.createDirectory(at: uploadFolder, withIntermediateDirectories: true)
-        } catch {
-            return FinderSyncCopyPreparation(
-                jobs: [],
-                failures: sourceURLs.map {
-                    ImportFailure(
-                        url: $0,
-                        message: error.localizedDescription,
-                        kind: .temporary,
-                        retrySourceURL: $0
-                    )
-                }
-            )
-        }
-
-        for (index, sourceURL) in sourceURLs.enumerated() {
+        for sourceURL in sourceURLs {
             let source = sourceURL.standardizedFileURL
             if let failureMessage = ImageTypePolicy.importExecutionFailureMessage(for: source) {
                 failures.append(ImportFailure(url: source, message: failureMessage, kind: .permanent))
                 continue
             }
 
-            let stagedBackup = stagedBackupURL(at: index, stagedPaths: stagedPaths)
-            let backup = stagedBackup ?? nextAvailableBackupURL(for: source, in: uploadFolder)
-            if backup.path != source.path {
-                if !fileManager.fileExists(atPath: backup.path) {
-                    do {
-                        try fileManager.copyItem(at: source, to: backup)
-                    } catch {
-                        AppLogger.log("prepare copy failed source=\(source.path) backup=\(backup.path) error=\(error.localizedDescription)")
-                        failures.append(ImportFailure(
-                            url: source,
-                            message: error.localizedDescription,
-                            kind: .temporary,
-                            retrySourceURL: source,
-                            retryStagedURL: stagedBackup
-                        ))
-                        continue
-                    }
-                }
-            }
-
-            jobs.append(FinderSyncCopyJob(sourceURL: source, backupURL: backup))
+            jobs.append(FinderSyncCopyJob(sourceURL: source, backupURL: source))
         }
 
         return FinderSyncCopyPreparation(jobs: jobs, failures: failures)
@@ -195,10 +156,12 @@ final class FinderSyncCopyService {
                 print("MARKED_SOURCE \(job.sourceURL.path)")
             }
 
-            if let error = UploadedMarkerStore.writeMarker(to: job.backupURL) {
-                print("MARK_BACKUP_FAILED \(job.backupURL.path): \(error)")
-            } else {
-                print("MARKED_BACKUP \(job.backupURL.path)")
+            if job.sourceURL.path != job.backupURL.path {
+                if let error = UploadedMarkerStore.writeMarker(to: job.backupURL) {
+                    print("MARK_BACKUP_FAILED \(job.backupURL.path): \(error)")
+                } else {
+                    print("MARKED_BACKUP \(job.backupURL.path)")
+                }
             }
         }
 
@@ -207,34 +170,6 @@ final class FinderSyncCopyService {
         }
 
         return result.failures.isEmpty && !result.jobs.isEmpty ? 0 : 1
-    }
-
-    private func nextAvailableBackupURL(for sourceURL: URL, in uploadFolder: URL) -> URL {
-        let source = sourceURL.standardizedFileURL
-        let folder = uploadFolder.standardizedFileURL
-
-        if source.deletingLastPathComponent().path == folder.path {
-            return source
-        }
-
-        let baseName = source.deletingPathExtension().lastPathComponent
-        let fileExtension = source.pathExtension
-        var candidate = folder.appendingPathComponent(source.lastPathComponent)
-        var suffix = 2
-
-        while fileManager.fileExists(atPath: candidate.path) {
-            if fileManager.contentsEqual(atPath: source.path, andPath: candidate.path) {
-                return candidate.standardizedFileURL
-            }
-
-            let fileName = fileExtension.isEmpty
-                ? "\(baseName) \(suffix)"
-                : "\(baseName) \(suffix).\(fileExtension)"
-            candidate = folder.appendingPathComponent(fileName)
-            suffix += 1
-        }
-
-        return candidate.standardizedFileURL
     }
 
     private func importCopyJobs(
@@ -263,7 +198,9 @@ final class FinderSyncCopyService {
                 AppLogger.log("finder sync import finished message=\(noticeKind.message) imported=\(imported) failures=0")
             }
 
-            let stagedPaths = jobs.map(\.backupURL.path)
+            let stagedPaths = jobs
+                .filter { $0.sourceURL.path != $0.backupURL.path }
+                .map(\.backupURL.path)
             let retry = retryTargets(from: failures)
 
             completion(FinderSyncCopyOutcome(
@@ -314,8 +251,7 @@ final class FinderSyncCopyService {
                     url: job.backupURL,
                     message: errorMessage ?? "Unknown error",
                     kind: .temporary,
-                    retrySourceURL: job.sourceURL,
-                    retryStagedURL: job.backupURL
+                    retrySourceURL: job.sourceURL
                 ))
             }
 
@@ -359,22 +295,11 @@ final class FinderSyncCopyService {
                 continue
             }
             paths.append(retrySourceURL.path)
-            stagedPaths.append(failure.retryStagedURL?.path ?? "")
+            if let retryStagedURL = failure.retryStagedURL {
+                stagedPaths.append(retryStagedURL.path)
+            }
         }
 
         return (paths, stagedPaths)
-    }
-
-    private func stagedBackupURL(at index: Int, stagedPaths: [String]) -> URL? {
-        guard stagedPaths.indices.contains(index) else {
-            return nil
-        }
-
-        let path = stagedPaths[index].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !path.isEmpty else {
-            return nil
-        }
-
-        return URL(fileURLWithPath: path).standardizedFileURL
     }
 }

@@ -55,8 +55,12 @@ AVIF_COPY_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_DEFAUL
 grep -q "FAILED .*sample.avif" <<< "$AVIF_COPY_OUTPUT"
 
 RAW_COPY_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_DEFAULT_FOLDER="$UPLOAD_DIR" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/sample.cr3")"
-grep -q "COPIED .*sample.cr3" <<< "$RAW_COPY_OUTPUT"
+grep -q "USING_SOURCE .*sample.cr3" <<< "$RAW_COPY_OUTPUT"
 grep -q "MARKED_SOURCE .*sample.cr3" <<< "$RAW_COPY_OUTPUT"
+if [[ -e "$UPLOAD_DIR/sample.cr3" ]]; then
+  echo "Finder sync should import RAW source directly without creating a copy." >&2
+  exit 1
+fi
 
 SUPPORT_OUTPUT="$("$BINARY" --dry-run --image-support-check "$SOURCE_DIR/photo.png" "$SOURCE_DIR/sample.avif" "$SOURCE_DIR/sample.cr3" || true)"
 grep -q "SUPPORTED .*photo.png" <<< "$SUPPORT_OUTPUT"
@@ -88,25 +92,33 @@ fi
 grep -q "INELIGIBLE" "$MIXED_OUTPUT"
 
 SYNC_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_DEFAULT_FOLDER="$UPLOAD_DIR" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/photo.png")"
-grep -q "COPIED .*photo.png" <<< "$SYNC_OUTPUT"
+grep -q "USING_SOURCE .*photo.png" <<< "$SYNC_OUTPUT"
 grep -q "MARKED_SOURCE .*photo.png" <<< "$SYNC_OUTPUT"
-grep -q "MARKED_BACKUP .*photo.png" <<< "$SYNC_OUTPUT"
+if grep -q "MARKED_BACKUP" <<< "$SYNC_OUTPUT"; then
+  echo "Finder sync should not mark a backup when importing source directly." >&2
+  echo "$SYNC_OUTPUT" >&2
+  exit 1
+fi
+if [[ -e "$UPLOAD_DIR/photo.png" ]]; then
+  echo "Finder sync should not create a copied photo in the upload folder." >&2
+  exit 1
+fi
 
 cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/retry.png"
 xattr -d "$MARKER_NAME" "$SOURCE_DIR/retry.png" 2>/dev/null || true
 FIRST_STAGE_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_DEFAULT_FOLDER="$UPLOAD_DIR" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/retry.png")"
-grep -q "COPIED .*retry.png" <<< "$FIRST_STAGE_OUTPUT"
+grep -q "USING_SOURCE .*retry.png" <<< "$FIRST_STAGE_OUTPUT"
 xattr -d "$MARKER_NAME" "$SOURCE_DIR/retry.png" 2>/dev/null || true
-xattr -d "$MARKER_NAME" "$UPLOAD_DIR/retry.png" 2>/dev/null || true
 SECOND_STAGE_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_DEFAULT_FOLDER="$UPLOAD_DIR" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/retry.png")"
-if [[ -e "$UPLOAD_DIR/retry 2.png" ]]; then
-  echo "Retry staging should reuse an identical existing backup instead of creating retry 2.png." >&2
+grep -q "USING_SOURCE .*retry.png" <<< "$SECOND_STAGE_OUTPUT"
+if [[ -e "$UPLOAD_DIR/retry.png" || -e "$UPLOAD_DIR/retry 2.png" ]]; then
+  echo "Retrying direct import should not create staged backup files." >&2
   echo "$SECOND_STAGE_OUTPUT" >&2
   exit 1
 fi
 
 MIXED_SYNC_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_DEFAULT_FOLDER="$UPLOAD_DIR" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/second.png" "$SOURCE_DIR/note.txt" || true)"
-grep -q "COPIED .*second.png" <<< "$MIXED_SYNC_OUTPUT"
+grep -q "USING_SOURCE .*second.png" <<< "$MIXED_SYNC_OUTPUT"
 grep -q "FAILED .*note.txt" <<< "$MIXED_SYNC_OUTPUT"
 
 cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/partial-ok.png"
@@ -119,16 +131,23 @@ grep -q "IMPORTED 1" <<< "$PARTIAL_OUTPUT"
 grep -q "FAILURES 1" <<< "$PARTIAL_OUTPUT"
 grep -q "RESOLUTION retryLater" <<< "$PARTIAL_OUTPUT"
 grep -q "RETRY_PATH .*partial-fail.png" <<< "$PARTIAL_OUTPUT"
-grep -q "RETRY_STAGED_PATH .*partial-fail.png" <<< "$PARTIAL_OUTPUT"
+if grep -q "RETRY_STAGED_PATH" <<< "$PARTIAL_OUTPUT"; then
+  echo "Partial retry should not include staged backup paths when importing sources directly." >&2
+  echo "$PARTIAL_OUTPUT" >&2
+  exit 1
+fi
 if grep -q "RETRY_PATH .*partial-ok.png" <<< "$PARTIAL_OUTPUT"; then
   echo "Partial retry should only include the failed source." >&2
   echo "$PARTIAL_OUTPUT" >&2
   exit 1
 fi
 
-test -f "$UPLOAD_DIR/photo.png"
 xattr -p "$MARKER_NAME" "$SOURCE_DIR/photo.png" >/dev/null
-xattr -p "$MARKER_NAME" "$UPLOAD_DIR/photo.png" >/dev/null
+if find "$UPLOAD_DIR" -type f | grep -q .; then
+  echo "Finder sync should not leave copied files in the upload folder." >&2
+  find "$UPLOAD_DIR" -type f >&2
+  exit 1
+fi
 
 MENU_CHECK_OUTPUT="$TMP_DIR/menu-check.out"
 if "$BINARY" --menu-eligible "$SOURCE_DIR/photo.png" >"$MENU_CHECK_OUTPUT" 2>&1; then

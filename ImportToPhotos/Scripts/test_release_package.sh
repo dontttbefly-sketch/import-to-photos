@@ -49,8 +49,16 @@ base64 -D > "$TEST_SOURCE_DIR/photo.png" <<'PNG'
 iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=
 PNG
 DEFAULT_COPY_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_HOME_DIR="$TEST_HOME" "$PACKAGED_BINARY" --sync-copy-test-run "$TEST_SOURCE_DIR/photo.png")"
-grep -q "COPIED $TEST_HOME/Pictures/ImportToPhotos/photo.png" <<< "$DEFAULT_COPY_OUTPUT"
-test -f "$TEST_HOME/Pictures/ImportToPhotos/photo.png"
+grep -q "USING_SOURCE $TEST_SOURCE_DIR/photo.png" <<< "$DEFAULT_COPY_OUTPUT"
+grep -q "MARKED_SOURCE $TEST_SOURCE_DIR/photo.png" <<< "$DEFAULT_COPY_OUTPUT"
+if grep -q "MARKED_BACKUP" <<< "$DEFAULT_COPY_OUTPUT"; then
+  echo "Finder right-click release behavior must not mark a copied backup by default." >&2
+  exit 1
+fi
+if [[ -e "$TEST_HOME/Pictures/ImportToPhotos/photo.png" ]]; then
+  echo "Finder right-click release behavior must not create a retained copy by default." >&2
+  exit 1
+fi
 
 grep -q "pluginkit -m" "$PACKAGE_DIR/Doctor.command"
 grep -q "WARNING" "$PACKAGE_DIR/Doctor.command"
