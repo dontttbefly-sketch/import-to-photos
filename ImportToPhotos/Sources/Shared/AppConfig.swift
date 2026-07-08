@@ -20,11 +20,10 @@ enum AppConfig {
             return URL(fileURLWithPath: configuredPath).standardizedFileURL
         }
 
-        let bundleURL = Bundle.main.bundleURL
-        if bundleURL.pathExtension.lowercased() == "app" {
-            return bundleURL.deletingLastPathComponent().deletingLastPathComponent()
-        }
-        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        return realUserHomeDirectory()
+            .appendingPathComponent("Pictures", isDirectory: true)
+            .appendingPathComponent("ImportToPhotos", isDirectory: true)
+            .standardizedFileURL
     }
 
     static func finderSyncJobDirectory() -> URL {
@@ -73,6 +72,13 @@ enum AppConfig {
     }
 
     static func realUserHomeDirectory() -> URL {
+        if let overridePath = ProcessInfo.processInfo.environment["IMPORT_TO_PHOTOS_HOME_DIR"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !overridePath.isEmpty {
+            return URL(fileURLWithPath: overridePath, isDirectory: true)
+                .standardizedFileURL
+        }
+
         if let passwordRecord = getpwuid(getuid()),
            let homeDirectory = passwordRecord.pointee.pw_dir {
             return URL(fileURLWithPath: String(cString: homeDirectory), isDirectory: true)

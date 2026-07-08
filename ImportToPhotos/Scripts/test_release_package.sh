@@ -19,6 +19,7 @@ test -d "$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app"
 test -d "$PACKAGE_DIR/Payload/Resources/ServiceWorkflow/同步进相册.workflow"
 test -f "$PACKAGE_DIR/Payload/Resources/LaunchAgent/local.import-to-photos.agent.plist"
 test -f "$PACKAGE_DIR/package-info.txt"
+test ! -f "$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app/Contents/Resources/DefaultImportFolder.txt"
 
 grep -q '^PACKAGE_NAME=ImportToPhotos-v9.9.9-' "$PACKAGE_DIR/package-info.txt"
 grep -q '^VERSION=9.9.9$' "$PACKAGE_DIR/package-info.txt"
@@ -40,6 +41,17 @@ grep -q "Photos 权限" "$PACKAGE_DIR/README-先双击我.md"
 grep -q "★ 同步进相册" "$PACKAGE_DIR/README-先双击我.md"
 grep -q "GitHub Release" "$PACKAGE_DIR/README-先双击我.md"
 
+PACKAGED_BINARY="$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app/Contents/MacOS/ImportToPhotos"
+TEST_HOME="$PACKAGE_DIR/test-home"
+TEST_SOURCE_DIR="$PACKAGE_DIR/test-source"
+mkdir -p "$TEST_HOME" "$TEST_SOURCE_DIR"
+base64 -D > "$TEST_SOURCE_DIR/photo.png" <<'PNG'
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=
+PNG
+DEFAULT_COPY_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_HOME_DIR="$TEST_HOME" "$PACKAGED_BINARY" --sync-copy-test-run "$TEST_SOURCE_DIR/photo.png")"
+grep -q "COPIED $TEST_HOME/Pictures/ImportToPhotos/photo.png" <<< "$DEFAULT_COPY_OUTPUT"
+test -f "$TEST_HOME/Pictures/ImportToPhotos/photo.png"
+
 grep -q "pluginkit -m" "$PACKAGE_DIR/Doctor.command"
 grep -q "WARNING" "$PACKAGE_DIR/Doctor.command"
 grep -q "Finder Sync extension process" "$PACKAGE_DIR/Doctor.command"
@@ -47,6 +59,10 @@ grep -q "Finder Sync extension process" "$PACKAGE_DIR/Doctor.command"
 ZIP_LIST="$(zipinfo -1 "$ZIP_PATH")"
 grep -q "ImportToPhotos-v9.9.9-.*/Install.command" <<< "$ZIP_LIST"
 grep -q "ImportToPhotos-v9.9.9-.*/Payload/Applications/ImportToPhotos.app/Contents/MacOS/ImportToPhotos" <<< "$ZIP_LIST"
+if grep -q "DefaultImportFolder.txt" <<< "$ZIP_LIST"; then
+  echo "Release zip must not include local DefaultImportFolder.txt" >&2
+  exit 1
+fi
 
 grep -q "package_release.sh" "$ROOT_DIR/../README.md"
 grep -q "GitHub Release" "$ROOT_DIR/../README.md"

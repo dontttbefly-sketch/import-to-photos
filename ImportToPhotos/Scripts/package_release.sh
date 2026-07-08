@@ -85,6 +85,7 @@ mkdir -p \
   "$PACKAGE_DIR/Payload/Resources/LaunchAgent"
 
 ditto "$APP_DIR" "$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app"
+rm -f "$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app/Contents/Resources/DefaultImportFolder.txt"
 ditto "$SERVICE_SOURCE_DIR" "$PACKAGE_DIR/Payload/Resources/ServiceWorkflow/同步进相册.workflow"
 ditto "$LAUNCH_AGENT_SOURCE" "$PACKAGE_DIR/Payload/Resources/LaunchAgent/local.import-to-photos.agent.plist"
 ditto "$TEMPLATE_DIR/Install.command" "$PACKAGE_DIR/Install.command"

@@ -78,7 +78,7 @@ DefaultImportFolder.txt
 /Users/you/Pictures/Incoming
 ```
 
-仓库提供模板：`ImportToPhotos/Resources/DefaultImportFolder.example.txt`。真实 `DefaultImportFolder.txt` 通常包含个人路径，已被 `.gitignore` 忽略，不应提交。
+仓库提供模板：`ImportToPhotos/Resources/DefaultImportFolder.example.txt`。真实 `DefaultImportFolder.txt` 通常包含个人路径，已被 `.gitignore` 忽略，不应提交。未配置时，工具使用当前用户的 `~/Pictures/ImportToPhotos`。
 
 ## 已导入标记
 
@@ -128,6 +128,12 @@ ImportToPhotos/dist/ImportToPhotos.app
 ```
 
 Release zip 会包含预编译 app、Finder 服务 workflow、LaunchAgent、安装脚本、诊断脚本、卸载脚本和用户安装说明。
+
+开发调试时，也可以直接安装 Finder 右键菜单：
+
+```sh
+./ImportToPhotos/Scripts/install_finder_extension.sh
+```
 
 ## 测试
 

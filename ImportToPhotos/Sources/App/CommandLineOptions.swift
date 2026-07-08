@@ -111,7 +111,7 @@ func printUsage() {
       ImportToPhotos --sync-copy [image ...]
       ImportToPhotos --background-agent
 
-    If no path is provided, the app imports the folder that contains ImportToPhotos.app.
+    If no path is provided, the app uses the configured default folder or ~/Pictures/ImportToPhotos.
     Successfully imported files are marked with the \(AppConfig.uploadedMarkerAttributeName) extended attribute.
     """)
 }
