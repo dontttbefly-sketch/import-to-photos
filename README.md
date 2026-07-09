@@ -1,3 +1,4 @@
+# ImportToPhotos
 
 Import To Photos 是一个纯本地 macOS 工具，用于把文件夹或单张图片导入系统 Photos Library。导入成功后，工具会在源文件上写入本地扩展属性标记，后续运行会自动跳过已导入文件，避免重复导入，同时保留原文件不变。
 
