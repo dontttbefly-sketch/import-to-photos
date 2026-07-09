@@ -1,4 +1,6 @@
-# Import To Photos Component Notes
+# ImportToPhotos
+
+## Import To Photos Component Notes
 
 This folder contains the macOS app source. See the root [README.md](../README.md) for full build, usage, duplicate-marker, privacy, and troubleshooting documentation.
 
