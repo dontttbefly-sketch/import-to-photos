@@ -1,0 +1,51 @@
+#!/bin/zsh
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RESOURCE_DIR="$SCRIPT_DIR/Resources"
+APP_INSTALL_DIR="/Applications/ImportToPhotos.app"
+EXTENSION_DIR="$APP_INSTALL_DIR/Contents/PlugIns/SyncToPhotosFinder.appex"
+EXTENSION_ID="local.import-to-photos.finder-sync"
+SERVICE_SOURCE_DIR="$RESOURCE_DIR/ServiceWorkflow/同步进相册.workflow"
+LAUNCH_AGENT_SOURCE="$RESOURCE_DIR/LaunchAgent/local.import-to-photos.agent.plist"
+LAUNCH_AGENT_LABEL="local.import-to-photos.agent"
+
+CONSOLE_USER="$(stat -f %Su /dev/console)"
+if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" ]]; then
+  echo "ImportToPhotos installer could not determine the logged-in user." >&2
+  exit 1
+fi
+
+CONSOLE_UID="$(id -u "$CONSOLE_USER")"
+USER_HOME="$(dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory | sed 's/^NFSHomeDirectory: //')"
+if [[ -z "$USER_HOME" || ! -d "$USER_HOME" ]]; then
+  echo "ImportToPhotos installer could not determine the home folder for $CONSOLE_USER." >&2
+  exit 1
+fi
+
+SERVICE_INSTALL_DIR="$USER_HOME/Library/Services/★ 同步进相册.workflow"
+OLD_SERVICE_INSTALL_DIR="$USER_HOME/Library/Services/同步进相册.workflow"
+LAUNCH_AGENT_INSTALL="$USER_HOME/Library/LaunchAgents/local.import-to-photos.agent.plist"
+GUI_DOMAIN="gui/$CONSOLE_UID"
+
+echo "Configuring ImportToPhotos for $CONSOLE_USER"
+
+xattr -dr com.apple.quarantine "$APP_INSTALL_DIR" 2>/dev/null || true
+mkdir -p "$USER_HOME/Library/Services" "$USER_HOME/Library/LaunchAgents"
+rm -rf "$OLD_SERVICE_INSTALL_DIR" "$SERVICE_INSTALL_DIR"
+ditto "$SERVICE_SOURCE_DIR" "$SERVICE_INSTALL_DIR"
+ditto "$LAUNCH_AGENT_SOURCE" "$LAUNCH_AGENT_INSTALL"
+chown -R "$CONSOLE_USER":staff "$SERVICE_INSTALL_DIR" "$LAUNCH_AGENT_INSTALL"
+chmod 644 "$LAUNCH_AGENT_INSTALL"
+
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP_INSTALL_DIR" >/dev/null 2>&1 || true
+pluginkit -a "$EXTENSION_DIR" >/dev/null 2>&1 || true
+launchctl asuser "$CONSOLE_UID" pluginkit -e use -i "$EXTENSION_ID" >/dev/null 2>&1 || pluginkit -e use -i "$EXTENSION_ID" >/dev/null 2>&1 || true
+launchctl bootout "$GUI_DOMAIN" "$LAUNCH_AGENT_INSTALL" >/dev/null 2>&1 || true
+launchctl bootstrap "$GUI_DOMAIN" "$LAUNCH_AGENT_INSTALL"
+launchctl kickstart -k "$GUI_DOMAIN/$LAUNCH_AGENT_LABEL"
+/System/Library/CoreServices/pbs -flush >/dev/null 2>&1 || true
+killall pbs >/dev/null 2>&1 || true
+killall Finder >/dev/null 2>&1 || true
+
+echo "ImportToPhotos installation finished."

@@ -7,6 +7,7 @@ APP_DIR="$ROOT_DIR/dist/ImportToPhotos.app"
 APP_BINARY="$APP_DIR/Contents/MacOS/ImportToPhotos"
 APP_INFO_PLIST="$ROOT_DIR/Resources/App/Info.plist"
 TEMPLATE_DIR="$ROOT_DIR/Resources/ReleasePackage"
+INSTALLER_SCRIPT_SOURCE="$ROOT_DIR/Resources/InstallerScripts/postinstall"
 SERVICE_SOURCE_DIR="$ROOT_DIR/Resources/ServiceWorkflow/同步进相册.workflow"
 LAUNCH_AGENT_SOURCE="$ROOT_DIR/Resources/LaunchAgent/local.import-to-photos.agent.plist"
 SKIP_BUILD=0
@@ -72,28 +73,28 @@ if [[ -z "$ARCH_LABEL" ]]; then
 fi
 PACKAGE_NAME="ImportToPhotos-v$VERSION-$ARCH_LABEL"
 PACKAGE_DIR="$ROOT_DIR/dist/$PACKAGE_NAME"
-ZIP_PATH="$ROOT_DIR/dist/$PACKAGE_NAME.zip"
-if [[ -e "$PACKAGE_DIR" || -e "$ZIP_PATH" ]]; then
+PKG_PATH="$PACKAGE_DIR/Install ImportToPhotos.pkg"
+DMG_PATH="$ROOT_DIR/dist/$PACKAGE_NAME.dmg"
+if [[ -e "$PACKAGE_DIR" || -e "$DMG_PATH" ]]; then
   PACKAGE_NAME="ImportToPhotos-v$VERSION-$ARCH_LABEL-$TIMESTAMP"
   PACKAGE_DIR="$ROOT_DIR/dist/$PACKAGE_NAME"
-  ZIP_PATH="$ROOT_DIR/dist/$PACKAGE_NAME.zip"
+  PKG_PATH="$PACKAGE_DIR/Install ImportToPhotos.pkg"
+  DMG_PATH="$ROOT_DIR/dist/$PACKAGE_NAME.dmg"
 fi
 
 mkdir -p \
-  "$PACKAGE_DIR/Payload/Applications" \
-  "$PACKAGE_DIR/Payload/Resources/ServiceWorkflow" \
-  "$PACKAGE_DIR/Payload/Resources/LaunchAgent"
+  "$PACKAGE_DIR/pkg-root/Applications" \
+  "$PACKAGE_DIR/pkg-scripts/Resources/ServiceWorkflow" \
+  "$PACKAGE_DIR/pkg-scripts/Resources/LaunchAgent" \
+  "$PACKAGE_DIR/dmg-root"
 
-ditto "$APP_DIR" "$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app"
-rm -f "$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app/Contents/Resources/DefaultImportFolder.txt"
-ditto "$SERVICE_SOURCE_DIR" "$PACKAGE_DIR/Payload/Resources/ServiceWorkflow/同步进相册.workflow"
-ditto "$LAUNCH_AGENT_SOURCE" "$PACKAGE_DIR/Payload/Resources/LaunchAgent/local.import-to-photos.agent.plist"
-ditto "$TEMPLATE_DIR/Install.command" "$PACKAGE_DIR/Install.command"
-ditto "$TEMPLATE_DIR/Doctor.command" "$PACKAGE_DIR/Doctor.command"
-ditto "$TEMPLATE_DIR/Uninstall.command" "$PACKAGE_DIR/Uninstall.command"
-ditto "$TEMPLATE_DIR/README-先双击我.md" "$PACKAGE_DIR/README-先双击我.md"
-
-chmod +x "$PACKAGE_DIR/Install.command" "$PACKAGE_DIR/Doctor.command" "$PACKAGE_DIR/Uninstall.command"
+ditto "$APP_DIR" "$PACKAGE_DIR/pkg-root/Applications/ImportToPhotos.app"
+rm -f "$PACKAGE_DIR/pkg-root/Applications/ImportToPhotos.app/Contents/Resources/DefaultImportFolder.txt"
+ditto "$SERVICE_SOURCE_DIR" "$PACKAGE_DIR/pkg-scripts/Resources/ServiceWorkflow/同步进相册.workflow"
+ditto "$LAUNCH_AGENT_SOURCE" "$PACKAGE_DIR/pkg-scripts/Resources/LaunchAgent/local.import-to-photos.agent.plist"
+ditto "$INSTALLER_SCRIPT_SOURCE" "$PACKAGE_DIR/pkg-scripts/postinstall"
+chmod +x "$PACKAGE_DIR/pkg-scripts/postinstall"
+ditto "$TEMPLATE_DIR/README-先双击我.md" "$PACKAGE_DIR/dmg-root/README-先读我.md"
 
 APP_BINARY_TYPE="$(file "$APP_BINARY" | head -n 1 | sed 's/^[^:]*: //')"
 
@@ -102,14 +103,33 @@ APP_BINARY_TYPE="$(file "$APP_BINARY" | head -n 1 | sed 's/^[^:]*: //')"
   echo "VERSION=$VERSION"
   echo "CREATED_AT=$TIMESTAMP"
   echo "DISTRIBUTION=github-release"
+  echo "FORMAT=dmg-pkg"
   echo "CPU_ARCH=$CPU_ARCH"
   echo "APP_ARCHS=$APP_ARCHS"
   echo "APP_BINARY_TYPE=$APP_BINARY_TYPE"
   echo "SIGNING=adhoc"
+  echo "PKG_SIGNING=unsigned"
   echo "NOTARIZED=no"
 } > "$PACKAGE_DIR/package-info.txt"
 
-ditto -c -k --sequesterRsrc --keepParent "$PACKAGE_DIR" "$ZIP_PATH"
+pkgbuild \
+  --root "$PACKAGE_DIR/pkg-root" \
+  --scripts "$PACKAGE_DIR/pkg-scripts" \
+  --identifier "local.import-to-photos.installer" \
+  --version "$VERSION" \
+  --install-location "/" \
+  --ownership recommended \
+  "$PKG_PATH"
+
+ditto "$PKG_PATH" "$PACKAGE_DIR/dmg-root/Install ImportToPhotos.pkg"
+ditto "$PACKAGE_DIR/package-info.txt" "$PACKAGE_DIR/dmg-root/package-info.txt"
+hdiutil create \
+  -volname "ImportToPhotos $VERSION" \
+  -srcfolder "$PACKAGE_DIR/dmg-root" \
+  -ov \
+  -format UDZO \
+  "$DMG_PATH" >/dev/null
 
 echo "PACKAGE_DIR=$PACKAGE_DIR"
-echo "ZIP_PATH=$ZIP_PATH"
+echo "PKG_PATH=$PKG_PATH"
+echo "DMG_PATH=$DMG_PATH"

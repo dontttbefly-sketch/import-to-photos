@@ -8,18 +8,22 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 OUTPUT="$("$SCRIPT_DIR/package_release.sh" --skip-build --version 9.9.9)"
 PACKAGE_DIR="$(grep '^PACKAGE_DIR=' <<< "$OUTPUT" | cut -d= -f2-)"
-ZIP_PATH="$(grep '^ZIP_PATH=' <<< "$OUTPUT" | cut -d= -f2-)"
+PKG_PATH="$(grep '^PKG_PATH=' <<< "$OUTPUT" | cut -d= -f2-)"
+DMG_PATH="$(grep '^DMG_PATH=' <<< "$OUTPUT" | cut -d= -f2-)"
 
 test -n "$PACKAGE_DIR"
-test -n "$ZIP_PATH"
+test -n "$PKG_PATH"
+test -n "$DMG_PATH"
 test -d "$PACKAGE_DIR"
-test -f "$ZIP_PATH"
+test -f "$PKG_PATH"
+test -f "$DMG_PATH"
 
-test -d "$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app"
-test -d "$PACKAGE_DIR/Payload/Resources/ServiceWorkflow/同步进相册.workflow"
-test -f "$PACKAGE_DIR/Payload/Resources/LaunchAgent/local.import-to-photos.agent.plist"
+test -d "$PACKAGE_DIR/pkg-root/Applications/ImportToPhotos.app"
+test -d "$PACKAGE_DIR/pkg-scripts/Resources/ServiceWorkflow/同步进相册.workflow"
+test -f "$PACKAGE_DIR/pkg-scripts/Resources/LaunchAgent/local.import-to-photos.agent.plist"
+test -f "$PACKAGE_DIR/pkg-scripts/postinstall"
 test -f "$PACKAGE_DIR/package-info.txt"
-test ! -f "$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app/Contents/Resources/DefaultImportFolder.txt"
+test ! -f "$PACKAGE_DIR/pkg-root/Applications/ImportToPhotos.app/Contents/Resources/DefaultImportFolder.txt"
 
 grep -q '^PACKAGE_NAME=ImportToPhotos-v9.9.9-' "$PACKAGE_DIR/package-info.txt"
 grep -q '^VERSION=9.9.9$' "$PACKAGE_DIR/package-info.txt"
@@ -27,21 +31,21 @@ grep -q '^CPU_ARCH=' "$PACKAGE_DIR/package-info.txt"
 grep -q '^APP_ARCHS=' "$PACKAGE_DIR/package-info.txt"
 grep -q '^APP_BINARY_TYPE=' "$PACKAGE_DIR/package-info.txt"
 grep -q '^DISTRIBUTION=github-release$' "$PACKAGE_DIR/package-info.txt"
+grep -q '^FORMAT=dmg-pkg$' "$PACKAGE_DIR/package-info.txt"
 grep -q '^SIGNING=adhoc$' "$PACKAGE_DIR/package-info.txt"
 grep -q '^NOTARIZED=no$' "$PACKAGE_DIR/package-info.txt"
 
-for command_file in Install.command Doctor.command Uninstall.command; do
-  test -f "$PACKAGE_DIR/$command_file"
-  test -x "$PACKAGE_DIR/$command_file"
-done
+test ! -f "$PACKAGE_DIR/Install.command"
+test ! -f "$PACKAGE_DIR/Doctor.command"
+test ! -f "$PACKAGE_DIR/Uninstall.command"
 
-test -f "$PACKAGE_DIR/README-先双击我.md"
-grep -q "右键.*Install.command" "$PACKAGE_DIR/README-先双击我.md"
-grep -q "Photos 权限" "$PACKAGE_DIR/README-先双击我.md"
-grep -q "★ 同步进相册" "$PACKAGE_DIR/README-先双击我.md"
-grep -q "GitHub Release" "$PACKAGE_DIR/README-先双击我.md"
+test -f "$PACKAGE_DIR/dmg-root/README-先读我.md"
+grep -q "Install ImportToPhotos.pkg" "$PACKAGE_DIR/dmg-root/README-先读我.md"
+grep -q "Photos 权限" "$PACKAGE_DIR/dmg-root/README-先读我.md"
+grep -q "★ 同步进相册" "$PACKAGE_DIR/dmg-root/README-先读我.md"
+grep -q "GitHub Release" "$PACKAGE_DIR/dmg-root/README-先读我.md"
 
-PACKAGED_BINARY="$PACKAGE_DIR/Payload/Applications/ImportToPhotos.app/Contents/MacOS/ImportToPhotos"
+PACKAGED_BINARY="$PACKAGE_DIR/pkg-root/Applications/ImportToPhotos.app/Contents/MacOS/ImportToPhotos"
 TEST_HOME="$PACKAGE_DIR/test-home"
 TEST_SOURCE_DIR="$PACKAGE_DIR/test-source"
 mkdir -p "$TEST_HOME" "$TEST_SOURCE_DIR"
@@ -60,18 +64,38 @@ if [[ -e "$TEST_HOME/Pictures/ImportToPhotos/photo.png" ]]; then
   exit 1
 fi
 
-grep -q "pluginkit -m" "$PACKAGE_DIR/Doctor.command"
-grep -q "WARNING" "$PACKAGE_DIR/Doctor.command"
-grep -q "Finder Sync extension process" "$PACKAGE_DIR/Doctor.command"
+grep -q "stat -f %Su /dev/console" "$PACKAGE_DIR/pkg-scripts/postinstall"
+grep -q "Library/Services" "$PACKAGE_DIR/pkg-scripts/postinstall"
+grep -q "Library/LaunchAgents" "$PACKAGE_DIR/pkg-scripts/postinstall"
+grep -q "pluginkit -e use" "$PACKAGE_DIR/pkg-scripts/postinstall"
+grep -q "launchctl bootstrap" "$PACKAGE_DIR/pkg-scripts/postinstall"
 
-ZIP_LIST="$(zipinfo -1 "$ZIP_PATH")"
-grep -q "ImportToPhotos-v9.9.9-.*/Install.command" <<< "$ZIP_LIST"
-grep -q "ImportToPhotos-v9.9.9-.*/Payload/Applications/ImportToPhotos.app/Contents/MacOS/ImportToPhotos" <<< "$ZIP_LIST"
-if grep -q "DefaultImportFolder.txt" <<< "$ZIP_LIST"; then
-  echo "Release zip must not include local DefaultImportFolder.txt" >&2
+PAYLOAD_FILES="$(pkgutil --payload-files "$PKG_PATH")"
+grep -q "Applications/ImportToPhotos.app/Contents/MacOS/ImportToPhotos" <<< "$PAYLOAD_FILES"
+if grep -q "DefaultImportFolder.txt" <<< "$PAYLOAD_FILES"; then
+  echo "Installer pkg must not include local DefaultImportFolder.txt" >&2
   exit 1
 fi
 
-grep -q "package_release.sh" "$ROOT_DIR/../README.md"
+DMG_INFO="$(hdiutil imageinfo "$DMG_PATH")"
+grep -q "Format: UDZO" <<< "$DMG_INFO"
+
+MOUNT_DIR="$PACKAGE_DIR/dmg-mount"
+mkdir -p "$MOUNT_DIR"
+hdiutil attach "$DMG_PATH" -nobrowse -readonly -mountpoint "$MOUNT_DIR" >/dev/null
+detach_dmg() {
+  hdiutil detach "$MOUNT_DIR" >/dev/null 2>&1 || true
+}
+trap detach_dmg EXIT
+test -f "$MOUNT_DIR/Install ImportToPhotos.pkg"
+test -f "$MOUNT_DIR/README-先读我.md"
+if [[ -e "$MOUNT_DIR/Install.command" ]]; then
+  echo "Release DMG must not expose Install.command as the primary installer." >&2
+  exit 1
+fi
+
+grep -q "package_release.sh --universal" "$ROOT_DIR/../README.md"
 grep -q "GitHub Release" "$ROOT_DIR/../README.md"
+grep -q "下载.*dmg" "$ROOT_DIR/../README.md"
+grep -q "Install ImportToPhotos.pkg" "$ROOT_DIR/../README.md"
 grep -q "不要点.*Code.*Download ZIP" "$ROOT_DIR/../README.md"
