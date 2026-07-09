@@ -67,6 +67,7 @@ case "$BUILD_MODE" in
     ;;
 esac
 
+rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$EXTENSION_MACOS_DIR" "$CACHE_DIR" "$OUTPUTS_DIR"
 cp "$RESOURCES_SOURCE_DIR/App/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$RESOURCES_SOURCE_DIR/FinderSyncExtension/Info.plist" "$EXTENSION_CONTENTS_DIR/Info.plist"

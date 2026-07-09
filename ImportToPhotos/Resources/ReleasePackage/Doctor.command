@@ -10,9 +10,8 @@ LAUNCH_AGENT_INSTALL="$HOME/Library/LaunchAgents/local.import-to-photos.agent.pl
 LAUNCH_AGENT_LABEL="local.import-to-photos.agent"
 GUI_DOMAIN="gui/$(id -u)"
 APP_LOG="$HOME/Library/Application Support/ImportToPhotos/app.log"
-APP_LOG_FALLBACK="/tmp/local.import-to-photos/app.log"
-FINDER_LOG="$HOME/Library/Application Support/ImportToPhotos/finder-sync.log"
 SHARED_SUPPORT_DIR="$HOME/Library/Containers/local.import-to-photos.finder-sync/Data/Library/Application Support/ImportToPhotos"
+FINDER_LOG="$SHARED_SUPPORT_DIR/finder-sync.log"
 HEARTBEAT_FILE="$SHARED_SUPPORT_DIR/finder-sync-heartbeat.log"
 JOB_DIR="$SHARED_SUPPORT_DIR/jobs"
 NO_PAUSE=0
@@ -178,10 +177,6 @@ if [[ -f "$APP_LOG" ]]; then
   echo
   echo "--- app.log ---"
   tail -n 12 "$APP_LOG"
-elif [[ -f "$APP_LOG_FALLBACK" ]]; then
-  echo
-  echo "--- app.log fallback ---"
-  tail -n 12 "$APP_LOG_FALLBACK"
 else
   warn "App log not found yet: $APP_LOG"
 fi

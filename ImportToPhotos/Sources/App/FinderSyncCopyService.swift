@@ -132,6 +132,10 @@ final class FinderSyncCopyService {
         guard AppConfig.finderSyncKeepCopyEnabled() else {
             for sourceURL in sourceURLs {
                 let source = sourceURL.standardizedFileURL
+                if UploadedMarkerStore.hasMarker(source) {
+                    AppLogger.log("finder sync copy skipped marked source=\(source.path)")
+                    continue
+                }
                 if let failureMessage = ImageTypePolicy.importExecutionFailureMessage(for: source) {
                     failures.append(ImportFailure(url: source, message: failureMessage, kind: .permanent))
                     continue
@@ -162,6 +166,10 @@ final class FinderSyncCopyService {
 
         for (index, sourceURL) in sourceURLs.enumerated() {
             let source = sourceURL.standardizedFileURL
+            if UploadedMarkerStore.hasMarker(source) {
+                AppLogger.log("finder sync copy skipped marked source=\(source.path)")
+                continue
+            }
             if let failureMessage = ImageTypePolicy.importExecutionFailureMessage(for: source) {
                 failures.append(ImportFailure(url: source, message: failureMessage, kind: .permanent))
                 continue

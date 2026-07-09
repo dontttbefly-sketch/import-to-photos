@@ -19,6 +19,8 @@ IMAGE_POLICY_SOURCE="$SHARED_SOURCE_DIR/ImageTypePolicy.swift"
 JOB_QUEUE_SOURCE="$SHARED_SOURCE_DIR/FinderSyncJobQueue.swift"
 JOB_SOURCE="$SHARED_SOURCE_DIR/FinderSyncJob.swift"
 ENTITLEMENTS="$ROOT_DIR/Resources/FinderSyncExtension/SyncToPhotosFinder.entitlements"
+APP_INFO_PLIST="$ROOT_DIR/Resources/App/Info.plist"
+EXTENSION_INFO_PLIST="$ROOT_DIR/Resources/FinderSyncExtension/Info.plist"
 SERVICE_WORKFLOW="$ROOT_DIR/Resources/ServiceWorkflow/同步进相册.workflow"
 LAUNCH_AGENT="$ROOT_DIR/Resources/LaunchAgent/local.import-to-photos.agent.plist"
 ROOT_README="$ROOT_DIR/../README.md"
@@ -261,6 +263,12 @@ grep -q "supportSummary" "$IMAGE_POLICY_SOURCE"
 grep -q "writeHeartbeat" "$LOGGER_SOURCE"
 grep -q "Finder Sync heartbeat" "$ROOT_DIR/Resources/ReleasePackage/Doctor.command"
 grep -q "Queue state:" "$ROOT_DIR/Resources/ReleasePackage/Doctor.command"
+grep -q 'FINDER_LOG="$SHARED_SUPPORT_DIR/finder-sync.log"' "$ROOT_DIR/Resources/ReleasePackage/Doctor.command"
+if grep -q "APP_LOG_FALLBACK" "$ROOT_DIR/Resources/ReleasePackage/Doctor.command"; then
+  echo "Doctor should report the current app log path, not a stale /tmp fallback." >&2
+  exit 1
+fi
+grep -q 'rm -rf "$APP_DIR"' "$SCRIPT_DIR/build.sh"
 
 if grep -q "guard FileManager.default.fileExists" "$IMAGE_POLICY_SOURCE"; then
   echo "Finder Sync eligibility should not hide menu just because sandboxed fileExists fails." >&2
@@ -290,6 +298,12 @@ fi
 
 test -f "$LAUNCH_AGENT"
 plutil -lint "$LAUNCH_AGENT" >/dev/null
+APP_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_INFO_PLIST")"
+EXTENSION_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$EXTENSION_INFO_PLIST")"
+APP_BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_INFO_PLIST")"
+EXTENSION_BUILD="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$EXTENSION_INFO_PLIST")"
+test "$APP_VERSION" = "$EXTENSION_VERSION"
+test "$APP_BUILD" = "$EXTENSION_BUILD"
 grep -q -- "--background-agent" "$APP_SOURCE_DIR/CommandLineOptions.swift"
 grep -q -- "--background-agent" "$LAUNCH_AGENT"
 grep -q "launchctl bootstrap" "$SCRIPT_DIR/install_finder_extension.sh"

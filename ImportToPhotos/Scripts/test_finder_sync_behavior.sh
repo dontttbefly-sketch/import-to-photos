@@ -107,6 +107,20 @@ if [[ -e "$UPLOAD_DIR/photo.png" ]]; then
   exit 1
 fi
 
+cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/mixed-marked.png"
+cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/mixed-new.png"
+xattr -d "$MARKER_NAME" "$SOURCE_DIR/mixed-marked.png" 2>/dev/null || true
+xattr -d "$MARKER_NAME" "$SOURCE_DIR/mixed-new.png" 2>/dev/null || true
+xattr -w "$MARKER_NAME" '{"version":1}' "$SOURCE_DIR/mixed-marked.png"
+MIXED_MARKED_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_DEFAULT_FOLDER="$UPLOAD_DIR" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/mixed-marked.png" "$SOURCE_DIR/mixed-new.png")"
+grep -q "USING_SOURCE .*mixed-new.png" <<< "$MIXED_MARKED_OUTPUT"
+grep -q "MARKED_SOURCE .*mixed-new.png" <<< "$MIXED_MARKED_OUTPUT"
+if grep -Eq "FAILED .*mixed-marked|USING_SOURCE .*mixed-marked|MARKED_SOURCE .*mixed-marked" <<< "$MIXED_MARKED_OUTPUT"; then
+  echo "Mixed marked and unmarked selections should skip the marked source without reporting a failure." >&2
+  echo "$MIXED_MARKED_OUTPUT" >&2
+  exit 1
+fi
+
 cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/backup-mode.png"
 xattr -d "$MARKER_NAME" "$SOURCE_DIR/backup-mode.png" 2>/dev/null || true
 KEEP_COPY_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_KEEP_COPY=1 IMPORT_TO_PHOTOS_DEFAULT_FOLDER="$KEEP_COPY_DIR" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/backup-mode.png")"
