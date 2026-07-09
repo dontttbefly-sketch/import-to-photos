@@ -4,6 +4,10 @@ import Foundation
 @main
 struct ImportToPhotosMain {
     private final class DenyingPhotosImporter: PhotosImporting {
+        func currentAddOnlyAccessAllowsImport() -> Bool {
+            false
+        }
+
         func requestAddOnlyAccess(completion: @escaping (Bool) -> Void) {
             completion(false)
         }
@@ -14,6 +18,10 @@ struct ImportToPhotosMain {
     }
 
     private final class PartiallyFailingPhotosImporter: PhotosImporting {
+        func currentAddOnlyAccessAllowsImport() -> Bool {
+            true
+        }
+
         func requestAddOnlyAccess(completion: @escaping (Bool) -> Void) {
             completion(true)
         }
@@ -38,6 +46,8 @@ struct ImportToPhotosMain {
             || arguments.contains("--sync-copy-denied-test-run")
             || arguments.contains("--queue-recovery-test-run")
             || arguments.contains("--queue-retry-test-run")
+            || arguments.contains("--queue-blocked-authorization-test-run")
+            || arguments.contains("--queue-release-blocked-test-run")
     }
 
     static func main() {
@@ -89,6 +99,16 @@ struct ImportToPhotosMain {
                 print(outcome.noticeKind.message)
                 print("IMPORTED \(outcome.imported)")
                 print("FAILURES \(outcome.failures.count)")
+                switch outcome.queueResolution {
+                case .complete:
+                    print("RESOLUTION complete")
+                case .retryLater:
+                    print("RESOLUTION retryLater")
+                case .blockedUntilAuthorization:
+                    print("RESOLUTION blockedUntilAuthorization")
+                case .failedPermanently:
+                    print("RESOLUTION failedPermanently")
+                }
                 exit(outcome.noticeKind == .needsAuthorization ? 0 : 1)
             }
             RunLoop.main.run()
@@ -106,6 +126,8 @@ struct ImportToPhotosMain {
                     print("RESOLUTION complete")
                 case .retryLater:
                     print("RESOLUTION retryLater")
+                case .blockedUntilAuthorization:
+                    print("RESOLUTION blockedUntilAuthorization")
                 case .failedPermanently:
                     print("RESOLUTION failedPermanently")
                 }
@@ -173,6 +195,37 @@ struct ImportToPhotosMain {
                     [.posixPermissions: 0o700],
                     ofItemAtPath: AppConfig.finderSyncJobDirectory().path
                 )
+                print("QUEUE_ERROR \(error.localizedDescription)")
+                exit(1)
+            }
+        }
+
+        if options.arguments.contains("--queue-blocked-authorization-test-run") {
+            do {
+                let queue = FinderSyncJobQueue(staleProcessingInterval: 0)
+                guard let claimedJob = try queue.claimNextJob() else {
+                    print("NO_JOB")
+                    exit(1)
+                }
+                let job = try queue.blockUntilAuthorization(
+                    claimedJob,
+                    errorMessage: "Photos authorization required"
+                )
+                print("AUTH_BLOCKED \(job.id)")
+                exit(0)
+            } catch {
+                print("QUEUE_ERROR \(error.localizedDescription)")
+                exit(1)
+            }
+        }
+
+        if options.arguments.contains("--queue-release-blocked-test-run") {
+            do {
+                let queue = FinderSyncJobQueue(staleProcessingInterval: 0)
+                let releasedCount = try queue.requeueBlockedAuthorizationJobs()
+                print("AUTH_RELEASED \(releasedCount)")
+                exit(releasedCount > 0 ? 0 : 1)
+            } catch {
                 print("QUEUE_ERROR \(error.localizedDescription)")
                 exit(1)
             }

@@ -11,9 +11,19 @@ enum FinderSyncLogger {
         ProcessInfo.processInfo.environment["IMPORT_TO_PHOTOS_VERBOSE_FINDER_SYNC"] == "1"
     }
 
-    static func log(_ message: String) {
-        writeHeartbeat(reason: message)
+    static func log(
+        _ message: String,
+        persistToFile: Bool = false,
+        updateHeartbeat: Bool = false
+    ) {
+        if updateHeartbeat {
+            writeHeartbeat(reason: message)
+        }
         logger.info("\(message, privacy: .public)")
+
+        guard persistToFile || isVerbose else {
+            return
+        }
 
         guard let supportDirectory = FileManager.default.urls(
             for: .applicationSupportDirectory,
@@ -30,6 +40,10 @@ enum FinderSyncLogger {
         FileLogWriter.append(message, to: logURL) { errorMessage in
             logger.error("container log failed: \(errorMessage, privacy: .public)")
         }
+    }
+
+    static func logImportant(_ message: String) {
+        log(message, persistToFile: true, updateHeartbeat: true)
     }
 
     static func writeHeartbeat(reason: String) {

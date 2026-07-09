@@ -136,6 +136,7 @@ if [[ -d "$JOB_DIR" ]]; then
   PENDING=0
   RETRYING=0
   PROCESSING=0
+  BLOCKED=0
   FAILED=0
 
   for job_file in "$JOB_DIR"/*.json(N); do
@@ -148,11 +149,17 @@ if [[ -d "$JOB_DIR" ]]; then
   for job_file in "$JOB_DIR"/*.processing(N); do
     PROCESSING=$((PROCESSING + 1))
   done
+  for job_file in "$JOB_DIR"/*.blocked(N); do
+    BLOCKED=$((BLOCKED + 1))
+  done
   for job_file in "$JOB_DIR"/*.failed(N); do
     FAILED=$((FAILED + 1))
   done
 
-  echo "pending=$PENDING retrying=$RETRYING processing=$PROCESSING failed=$FAILED"
+  echo "pending=$PENDING retrying=$RETRYING processing=$PROCESSING blocked=$BLOCKED failed=$FAILED"
+  if [[ "$BLOCKED" -gt 0 ]]; then
+    warn "Queue has job(s) blocked until Photos authorization is allowed."
+  fi
   if [[ "$FAILED" -gt 0 ]]; then
     warn "Queue has failed job(s). Recent failed files:"
     ls -t "$JOB_DIR"/*.failed(N) | head -n 5

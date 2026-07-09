@@ -88,6 +88,28 @@ final class FinderSyncJobQueue {
     }
 
     @discardableResult
+    func blockUntilAuthorization(
+        _ claimedJob: FinderSyncClaimedJob,
+        errorMessage: String = "Photos authorization required",
+        paths: [String]? = nil,
+        stagedPaths: [String]? = nil
+    ) throws -> FinderSyncQueuedJob {
+        let blockedJob = claimedJob.job.withRetry(
+            attemptCount: claimedJob.job.attemptCount,
+            nextAttemptAt: nil,
+            lastError: errorMessage,
+            paths: paths ?? claimedJob.job.paths,
+            stagedPaths: stagedPaths ?? claimedJob.job.stagedPaths
+        )
+        try replaceProcessingFileWithJob(
+            blockedJob,
+            processingURL: claimedJob.processingURL,
+            replacementExtension: "blocked"
+        )
+        return blockedJob
+    }
+
+    @discardableResult
     func retryLater(_ claimedJob: FinderSyncClaimedJob,
         errorMessage: String = "Retryable failure",
         paths: [String]? = nil,
@@ -120,6 +142,29 @@ final class FinderSyncJobQueue {
         )
         try replaceProcessingFileWithRetryJob(retryJob, processingURL: claimedJob.processingURL)
         return .scheduled(retryJob)
+    }
+
+    @discardableResult
+    func requeueBlockedAuthorizationJobs() throws -> Int {
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let blockedURLs = try fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )
+            .filter { $0.pathExtension == "blocked" }
+
+        var releasedCount = 0
+        for blockedURL in blockedURLs {
+            let retryURL = blockedURL
+                .deletingPathExtension()
+                .appendingPathExtension("json")
+            try? fileManager.removeItem(at: retryURL)
+            try fileManager.moveItem(at: blockedURL, to: retryURL)
+            releasedCount += 1
+        }
+
+        return releasedCount
     }
 
     func recoverStaleProcessingJobs(referenceDate: Date = Date()) throws {
@@ -171,14 +216,41 @@ final class FinderSyncJobQueue {
         let retryURL = processingURL
             .deletingPathExtension()
             .appendingPathExtension("json")
+        try replaceProcessingFileWithJob(
+            job,
+            processingURL: processingURL,
+            replacementURL: retryURL
+        )
+    }
+
+    private func replaceProcessingFileWithJob(
+        _ job: FinderSyncQueuedJob,
+        processingURL: URL,
+        replacementExtension: String
+    ) throws {
+        let replacementURL = processingURL
+            .deletingPathExtension()
+            .appendingPathExtension(replacementExtension)
+        try replaceProcessingFileWithJob(
+            job,
+            processingURL: processingURL,
+            replacementURL: replacementURL
+        )
+    }
+
+    private func replaceProcessingFileWithJob(
+        _ job: FinderSyncQueuedJob,
+        processingURL: URL,
+        replacementURL: URL
+    ) throws {
         let temporaryURL = directory
             .appendingPathComponent(".\(job.id)-\(UUID().uuidString)", isDirectory: false)
             .appendingPathExtension("tmp")
 
         do {
             try write(job, to: temporaryURL)
-            try? fileManager.removeItem(at: retryURL)
-            try fileManager.moveItem(at: temporaryURL, to: retryURL)
+            try? fileManager.removeItem(at: replacementURL)
+            try fileManager.moveItem(at: temporaryURL, to: replacementURL)
             try fileManager.removeItem(at: processingURL)
         } catch {
             try? fileManager.removeItem(at: temporaryURL)

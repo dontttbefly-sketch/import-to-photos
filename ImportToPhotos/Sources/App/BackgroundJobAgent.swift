@@ -1,6 +1,8 @@
 import Foundation
 
 final class BackgroundJobAgent: NSObject {
+    private static let jobPollingInterval: TimeInterval = 3.0
+
     private let jobQueue: FinderSyncJobQueue
     private let copyService: FinderSyncCopyService
     private var jobTimer: Timer?
@@ -19,7 +21,7 @@ final class BackgroundJobAgent: NSObject {
             name: AppConfig.finderSyncJobNotificationName,
             object: nil
         )
-        jobTimer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
+        jobTimer = Timer.scheduledTimer(withTimeInterval: Self.jobPollingInterval, repeats: true) { [weak self] _ in
             self?.processPendingFinderSyncJobs()
         }
         processPendingFinderSyncJobs()
@@ -36,6 +38,12 @@ final class BackgroundJobAgent: NSObject {
 
         let claimedJob: FinderSyncClaimedJob
         do {
+            if copyService.currentAddOnlyAccessAllowsImport() {
+                let releasedCount = try jobQueue.requeueBlockedAuthorizationJobs()
+                if releasedCount > 0 {
+                    AppLogger.log("agent released authorization-blocked jobs count=\(releasedCount)")
+                }
+            }
             guard let nextJob = try jobQueue.claimNextJob() else {
                 return
             }
@@ -61,6 +69,13 @@ final class BackgroundJobAgent: NSObject {
                 self.jobQueue.complete(claimedJob)
             case .retryLater(let paths, let stagedPaths):
                 self.enqueueRetryJob(
+                    claimedJob,
+                    outcome: outcome,
+                    paths: paths,
+                    stagedPaths: stagedPaths
+                )
+            case .blockedUntilAuthorization(let paths, let stagedPaths):
+                self.blockUntilAuthorization(
                     claimedJob,
                     outcome: outcome,
                     paths: paths,
@@ -98,6 +113,25 @@ final class BackgroundJobAgent: NSObject {
             }
         } catch {
             AppLogger.log("agent sync job retry write failed id=\(claimedJob.job.id) error=\(error.localizedDescription)")
+        }
+    }
+
+    private func blockUntilAuthorization(
+        _ claimedJob: FinderSyncClaimedJob,
+        outcome: FinderSyncCopyOutcome,
+        paths: [String],
+        stagedPaths: [String]
+    ) {
+        do {
+            let job = try jobQueue.blockUntilAuthorization(
+                claimedJob,
+                errorMessage: outcome.failureSummary,
+                paths: paths,
+                stagedPaths: stagedPaths
+            )
+            AppLogger.log("agent sync job blocked for Photos authorization id=\(job.id) reason=\(job.lastError ?? "unknown")")
+        } catch {
+            AppLogger.log("agent sync job authorization block write failed id=\(claimedJob.job.id) error=\(error.localizedDescription)")
         }
     }
 }

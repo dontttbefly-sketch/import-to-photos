@@ -18,7 +18,7 @@ enum FinderBadgeController {
         let isEligible = ImageTypePolicy.isFinderSyncEligibleImage(url)
         let badgeIdentifier = isEligible ? eligibleBadgeIdentifier : ""
         FIFinderSyncController.default().setBadgeIdentifier(badgeIdentifier, for: url)
-        if isEligible || FinderSyncLogger.isVerbose {
+        if FinderSyncLogger.isVerbose {
             FinderSyncLogger.log("requestBadgeIdentifierForURL url=\(url.path) eligible=\(isEligible) badge=\(badgeIdentifier.isEmpty ? "cleared" : badgeIdentifier)")
         }
     }

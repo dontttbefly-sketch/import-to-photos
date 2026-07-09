@@ -45,6 +45,10 @@ struct FinderMenuController {
     }
 
     private func logEligibility(_ source: String, _ urls: [URL]) {
+        guard FinderSyncLogger.isVerbose else {
+            return
+        }
+
         if urls.isEmpty {
             FinderSyncLogger.log("eligibility source=\(source) result=false reason=no-urls")
             return

@@ -17,6 +17,8 @@ struct CommandLineOptions {
         "--sync-copy-denied-test-run",
         "--queue-recovery-test-run",
         "--queue-retry-test-run",
+        "--queue-blocked-authorization-test-run",
+        "--queue-release-blocked-test-run",
         "--dry-run",
         "--sync-import",
         "--sync-copy",

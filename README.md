@@ -145,7 +145,7 @@ ImportToPhotos/dist/ImportToPhotos.app
 ./ImportToPhotos/Scripts/package_release.sh --universal
 ```
 
-Release dmg 会包含 `Install ImportToPhotos.pkg`、`Uninstall ImportToPhotos.command` 和用户安装说明。pkg 会安装预编译 app、Finder 服务 workflow 和 LaunchAgent。
+Release dmg 会包含 `Install ImportToPhotos.pkg`、`Doctor ImportToPhotos.command`、`Uninstall ImportToPhotos.command` 和用户安装说明。pkg 会安装预编译 app、Finder 服务 workflow 和 LaunchAgent。
 
 开发调试时，也可以直接安装 Finder 右键菜单：
 

@@ -153,19 +153,46 @@ enum ImageTypePolicy {
         return importSupportStatus(for: standardized).canAttemptPhotosImport
     }
 
-    static func isStrictlySupportedImageFile(_ url: URL, contentType: UTType? = nil) -> Bool {
-        importSupportStatus(for: url, contentType: contentType).canAttemptPhotosImport
+    static func isStrictlySupportedImageFile(
+        _ url: URL,
+        contentType: UTType? = nil,
+        isDirectory: Bool? = nil,
+        fileSize: Int? = nil
+    ) -> Bool {
+        importSupportStatus(
+            for: url,
+            contentType: contentType,
+            isDirectory: isDirectory,
+            fileSize: fileSize
+        ).canAttemptPhotosImport
     }
 
-    static func importSupportStatus(for url: URL, contentType: UTType? = nil) -> ImportSupportStatus {
+    static func importSupportStatus(
+        for url: URL,
+        contentType: UTType? = nil,
+        isDirectory: Bool? = nil,
+        fileSize: Int? = nil
+    ) -> ImportSupportStatus {
         let standardized = url.standardizedFileURL
-        let values = try? standardized.resourceValues(forKeys: [.contentTypeKey, .isDirectoryKey, .fileSizeKey])
+        var requestedKeys = Set<URLResourceKey>()
+        if contentType == nil {
+            requestedKeys.insert(.contentTypeKey)
+        }
+        if isDirectory == nil {
+            requestedKeys.insert(.isDirectoryKey)
+        }
+        if fileSize == nil {
+            requestedKeys.insert(.fileSizeKey)
+        }
+        let values = requestedKeys.isEmpty
+            ? nil
+            : try? standardized.resourceValues(forKeys: requestedKeys)
 
-        if values?.isDirectory == true {
+        if (isDirectory ?? values?.isDirectory) == true {
             return .unsupported("Directory is not an image file.")
         }
 
-        if values?.fileSize == 0 {
+        if (fileSize ?? values?.fileSize) == 0 {
             return .unsupported("File is empty.")
         }
 

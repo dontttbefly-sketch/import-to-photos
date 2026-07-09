@@ -70,6 +70,15 @@ enum AppConfig {
             .standardizedFileURL
     }
 
+    static func importedRecordStoreURL() -> URL {
+        realUserHomeDirectory()
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Application Support", isDirectory: true)
+            .appendingPathComponent("ImportToPhotos", isDirectory: true)
+            .appendingPathComponent("imported-records.jsonl", isDirectory: false)
+            .standardizedFileURL
+    }
+
     static func finderSyncSharedSupportDirectory() -> URL {
         realUserHomeDirectory()
             .appendingPathComponent("Library", isDirectory: true)

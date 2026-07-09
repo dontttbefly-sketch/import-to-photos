@@ -13,7 +13,7 @@ final class FinderSyncExtension: FIFinderSync {
         FinderBadgeController.registerBadges()
         let directories = monitoredDirectories()
         FIFinderSyncController.default().directoryURLs = directories
-        FinderSyncLogger.log("init directories=\(directories.map(\.path).sorted().joined(separator: " | "))")
+        FinderSyncLogger.logImportant("init directories=\(directories.map(\.path).sorted().joined(separator: " | "))")
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
@@ -76,7 +76,7 @@ final class FinderSyncExtension: FIFinderSync {
             return
         }
 
-        FinderSyncLogger.log("sync click paths=\(paths.joined(separator: " | "))")
+        FinderSyncLogger.logImportant("sync click paths=\(paths.joined(separator: " | "))")
         enqueueSyncJob(paths: paths)
     }
 
@@ -84,9 +84,9 @@ final class FinderSyncExtension: FIFinderSync {
         do {
             let job = try jobQueue.enqueue(paths: paths)
             DistributedNotificationCenter.default().post(name: AppConfig.finderSyncJobNotificationName, object: nil)
-            FinderSyncLogger.log("sync job queued id=\(job.id) paths=\(paths.joined(separator: " | "))")
+            FinderSyncLogger.logImportant("sync job queued id=\(job.id) paths=\(paths.joined(separator: " | "))")
         } catch {
-            FinderSyncLogger.log("sync job enqueue failed paths=\(paths.joined(separator: " | ")) error=\(error.localizedDescription)")
+            FinderSyncLogger.logImportant("sync job enqueue failed paths=\(paths.joined(separator: " | ")) error=\(error.localizedDescription)")
         }
     }
 
@@ -108,14 +108,20 @@ final class FinderSyncExtension: FIFinderSync {
     private func selectedItemURLsForMenu() -> [URL] {
         let controller = FIFinderSyncController.default()
         if let selectedURLs = controller.selectedItemURLs(), !selectedURLs.isEmpty {
-            FinderSyncLogger.log("url source=selectedItemURLs count=\(selectedURLs.count) urls=\(selectedURLs.map(\.path).joined(separator: " | "))")
+            if FinderSyncLogger.isVerbose {
+                FinderSyncLogger.log("url source=selectedItemURLs count=\(selectedURLs.count) urls=\(selectedURLs.map(\.path).joined(separator: " | "))")
+            }
             return selectedURLs
         }
         if let targetedURL = controller.targetedURL() {
-            FinderSyncLogger.log("url source=targetedURL count=1 urls=\(targetedURL.path)")
+            if FinderSyncLogger.isVerbose {
+                FinderSyncLogger.log("url source=targetedURL count=1 urls=\(targetedURL.path)")
+            }
             return [targetedURL]
         }
-        FinderSyncLogger.log("url source=none")
+        if FinderSyncLogger.isVerbose {
+            FinderSyncLogger.log("url source=none")
+        }
         return []
     }
 

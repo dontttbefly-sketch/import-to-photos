@@ -43,6 +43,7 @@ grep -q "TEST_HOOKS_DISABLED" "$DENIED_LOCKED_OUTPUT"
 DENIED_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_DEFAULT_FOLDER="$UPLOAD_DIR" "$BINARY" --sync-copy-denied-test-run "$SOURCE_DIR/photo.png")"
 grep -q "需要授权" <<< "$DENIED_OUTPUT"
 grep -q "IMPORTED 0" <<< "$DENIED_OUTPUT"
+grep -q "RESOLUTION blockedUntilAuthorization" <<< "$DENIED_OUTPUT"
 if [[ -e "$UPLOAD_DIR/photo.png" ]]; then
   echo "Denied Photos access must not copy into upload folder." >&2
   exit 1
@@ -106,6 +107,27 @@ if [[ -e "$UPLOAD_DIR/photo.png" ]]; then
   echo "Finder sync should not create a copied photo in the upload folder." >&2
   exit 1
 fi
+
+FALLBACK_HOME="$TMP_DIR/fallback-home"
+mkdir -p "$FALLBACK_HOME"
+cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/fallback-marker.png"
+xattr -d "$MARKER_NAME" "$SOURCE_DIR/fallback-marker.png" 2>/dev/null || true
+FALLBACK_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_FORCE_MARKER_WRITE_FAILURE=1 IMPORT_TO_PHOTOS_HOME_DIR="$FALLBACK_HOME" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/fallback-marker.png")"
+grep -q "MARKED_SOURCE .*fallback-marker.png" <<< "$FALLBACK_OUTPUT"
+if xattr -p "$MARKER_NAME" "$SOURCE_DIR/fallback-marker.png" >/dev/null 2>&1; then
+  echo "Forced marker write failure should not leave an xattr marker." >&2
+  exit 1
+fi
+FALLBACK_RECORDS="$FALLBACK_HOME/Library/Application Support/ImportToPhotos/imported-records.jsonl"
+test -f "$FALLBACK_RECORDS"
+grep -q "fallback-marker.png" "$FALLBACK_RECORDS"
+FALLBACK_MENU_OUTPUT="$TMP_DIR/fallback-menu.out"
+if IMPORT_TO_PHOTOS_HOME_DIR="$FALLBACK_HOME" "$BINARY" --menu-eligible "$SOURCE_DIR/fallback-marker.png" >"$FALLBACK_MENU_OUTPUT" 2>&1; then
+  cat "$FALLBACK_MENU_OUTPUT" >&2
+  echo "A source covered by the fallback imported-record store should not be menu eligible." >&2
+  exit 1
+fi
+grep -q "INELIGIBLE" "$FALLBACK_MENU_OUTPUT"
 
 cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/mixed-marked.png"
 cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/mixed-new.png"
@@ -252,3 +274,24 @@ EXHAUSTED_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_JOB_DI
 grep -q "RETRY_EXHAUSTED exhausted-me attempt=3" <<< "$EXHAUSTED_OUTPUT"
 test -f "$EXHAUSTED_DIR/exhausted-me.failed"
 grep -q '"lastError"' "$EXHAUSTED_DIR/exhausted-me.failed"
+
+BLOCKED_DIR="$TMP_DIR/blocked-jobs"
+mkdir -p "$BLOCKED_DIR"
+cat > "$BLOCKED_DIR/auth-blocked.json" <<EOF
+{"id":"auth-blocked","createdAt":"2026-07-08T00:00:00Z","paths":["$SOURCE_DIR/photo.png"]}
+EOF
+BLOCKED_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_JOB_DIR="$BLOCKED_DIR" "$BINARY" --queue-blocked-authorization-test-run)"
+grep -q "AUTH_BLOCKED auth-blocked" <<< "$BLOCKED_OUTPUT"
+test -f "$BLOCKED_DIR/auth-blocked.blocked"
+grep -q '"lastError"' "$BLOCKED_DIR/auth-blocked.blocked"
+if [[ -e "$BLOCKED_DIR/auth-blocked.json" || -e "$BLOCKED_DIR/auth-blocked.processing" || -e "$BLOCKED_DIR/auth-blocked.failed" ]]; then
+  echo "Photos authorization failures should become blocked jobs, not retrying or failed jobs." >&2
+  exit 1
+fi
+RELEASE_BLOCKED_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_JOB_DIR="$BLOCKED_DIR" "$BINARY" --queue-release-blocked-test-run)"
+grep -q "AUTH_RELEASED 1" <<< "$RELEASE_BLOCKED_OUTPUT"
+test -f "$BLOCKED_DIR/auth-blocked.json"
+if [[ -e "$BLOCKED_DIR/auth-blocked.blocked" ]]; then
+  echo "Released authorization-blocked jobs should return to the pending queue." >&2
+  exit 1
+fi

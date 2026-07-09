@@ -18,7 +18,7 @@
 
 ## 出问题时
 
-重新运行安装器通常可以修复 Finder 右键服务和后台服务注册问题。仍不可用时，请到 GitHub issue 反馈安装日志和 macOS 版本。
+重新运行安装器通常可以修复 Finder 右键服务和后台服务注册问题。仍不可用时，先双击 `Doctor ImportToPhotos.command`，再到 GitHub issue 反馈诊断结果和 macOS 版本。
 
 常见情况：
 

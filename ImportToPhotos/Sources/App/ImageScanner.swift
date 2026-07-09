@@ -17,7 +17,8 @@ struct ImageScanner {
         let resourceKeys: Set<URLResourceKey> = [
             .contentTypeKey,
             .isDirectoryKey,
-            .isPackageKey
+            .isPackageKey,
+            .fileSizeKey
         ]
 
         func isInsideToolDirectory(_ url: URL) -> Bool {
@@ -28,12 +29,17 @@ struct ImageScanner {
             return path == toolDirectoryPath || path.hasPrefix(toolDirectoryPath + "/")
         }
 
-        func addIfImage(_ url: URL, contentType: UTType?) {
+        func addIfImage(_ url: URL, contentType: UTType?, isDirectory: Bool?, fileSize: Int?) {
             let standardized = url.standardizedFileURL
             guard !isInsideToolDirectory(standardized) else {
                 return
             }
-            guard ImageTypePolicy.isStrictlySupportedImageFile(standardized, contentType: contentType) else {
+            guard ImageTypePolicy.isStrictlySupportedImageFile(
+                standardized,
+                contentType: contentType,
+                isDirectory: isDirectory,
+                fileSize: fileSize
+            ) else {
                 return
             }
             let path = standardized.path
@@ -52,7 +58,12 @@ struct ImageScanner {
 
             if !isDirectory.boolValue {
                 let values = try? input.resourceValues(forKeys: resourceKeys)
-                addIfImage(input, contentType: values?.contentType)
+                addIfImage(
+                    input,
+                    contentType: values?.contentType,
+                    isDirectory: values?.isDirectory,
+                    fileSize: values?.fileSize
+                )
                 continue
             }
 
@@ -72,10 +83,8 @@ struct ImageScanner {
                 }
 
                 let values = try? url.resourceValues(forKeys: resourceKeys)
-                var isDirectory: ObjCBool = false
-                FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
 
-                if isDirectory.boolValue {
+                if values?.isDirectory == true {
                     let name = url.lastPathComponent
                     let ext = url.pathExtension.lowercased()
                     if values?.isPackage == true
@@ -88,7 +97,12 @@ struct ImageScanner {
                     continue
                 }
 
-                addIfImage(url, contentType: values?.contentType)
+                addIfImage(
+                    url,
+                    contentType: values?.contentType,
+                    isDirectory: values?.isDirectory,
+                    fileSize: values?.fileSize
+                )
             }
         }
 

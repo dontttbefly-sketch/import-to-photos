@@ -30,11 +30,21 @@ struct ImportFailure {
 }
 
 protocol PhotosImporting: AnyObject {
+    func currentAddOnlyAccessAllowsImport() -> Bool
     func requestAddOnlyAccess(completion: @escaping (Bool) -> Void)
     func importImage(at url: URL, completion: @escaping (_ success: Bool, _ errorMessage: String?) -> Void)
 }
 
 final class PhotosImporter: PhotosImporting {
+    func currentAddOnlyAccessAllowsImport() -> Bool {
+        switch PHPhotoLibrary.authorizationStatus(for: .addOnly) {
+        case .authorized, .limited:
+            return true
+        default:
+            return false
+        }
+    }
+
     func requestAddOnlyAccess(completion: @escaping (Bool) -> Void) {
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
             switch status {

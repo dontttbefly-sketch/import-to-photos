@@ -145,12 +145,21 @@ grep -q "finder-sync.log" "$LOGGER_SOURCE"
 grep -q "FileLogWriter" "$SHARED_SOURCE_DIR/FileLogWriter.swift"
 grep -q "FileLogWriter.append" "$APP_SOURCE_DIR/AppLogger.swift"
 grep -q "FileLogWriter.append" "$LOGGER_SOURCE"
+grep -q "persistToFile" "$LOGGER_SOURCE"
+grep -q "updateHeartbeat" "$LOGGER_SOURCE"
+grep -q "logImportant" "$LOGGER_SOURCE"
+grep -q "guard persistToFile || isVerbose else" "$LOGGER_SOURCE"
 grep -q "static func write" "$SHARED_SOURCE_DIR/FileLogWriter.swift"
 grep -q "FileLogWriter.write" "$LOGGER_SOURCE"
 grep -q "IMPORT_TO_PHOTOS_VERBOSE_FINDER_SYNC" "$LOGGER_SOURCE"
 grep -q "flock(" "$SHARED_SOURCE_DIR/FileLogWriter.swift"
 grep -q "FinderSyncLogger.isVerbose" "$BADGE_SOURCE"
+if grep -q "if isEligible || FinderSyncLogger.isVerbose" "$BADGE_SOURCE"; then
+  echo "Finder Sync should not write per-eligible badge logs by default; keep badge details verbose-only." >&2
+  exit 1
+fi
 grep -q "FinderSyncLogger.log" "$EXTENSION_SOURCE"
+grep -q "FinderSyncLogger.logImportant" "$EXTENSION_SOURCE"
 grep -q "beginObservingDirectory" "$EXTENSION_SOURCE"
 grep -q "endObservingDirectory" "$EXTENSION_SOURCE"
 grep -q "requestBadgeIdentifier" "$EXTENSION_SOURCE"
@@ -211,6 +220,7 @@ grep -q "withStagedPaths" "$JOB_SOURCE"
 grep -q "retryBackoff" "$JOB_QUEUE_SOURCE"
 grep -q "QueueResolution" "$FINDER_COPY_SOURCE"
 grep -q "retryLater(paths:" "$FINDER_COPY_SOURCE"
+grep -q "blockedUntilAuthorization(paths:" "$FINDER_COPY_SOURCE"
 grep -q "retryPaths" "$FINDER_COPY_SOURCE"
 grep -q "retryStagedPaths" "$FINDER_COPY_SOURCE"
 grep -q "ImportFailureKind" "$APP_SOURCE_DIR/PhotosImporter.swift" "$FINDER_COPY_SOURCE"
@@ -222,6 +232,8 @@ grep -q "retryLater" "$AGENT_SOURCE"
 grep -q "enqueueRetryJob" "$AGENT_SOURCE"
 grep -q "stagedPaths" "$AGENT_SOURCE"
 grep -q "recoverStaleProcessingJobs" "$JOB_QUEUE_SOURCE"
+grep -q "blockUntilAuthorization" "$JOB_QUEUE_SOURCE"
+grep -q "requeueBlockedAuthorizationJobs" "$JOB_QUEUE_SOURCE"
 grep -q "staleProcessingInterval" "$JOB_QUEUE_SOURCE"
 grep -q "IMPORT_TO_PHOTOS_JOB_DIR" "$CONFIG_SOURCE"
 grep -q "IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS" "$APP_SOURCE_DIR/ImportToPhotosMain.swift"
@@ -229,11 +241,18 @@ grep -q "TEST_HOOKS_DISABLED" "$APP_SOURCE_DIR/ImportToPhotosMain.swift"
 grep -q "processPendingFinderSyncJobs" "$AGENT_SOURCE"
 grep -q "agent processing sync job" "$AGENT_SOURCE"
 grep -q "Timer.scheduledTimer" "$AGENT_SOURCE"
+grep -q "jobPollingInterval" "$AGENT_SOURCE"
+grep -q "3.0" "$AGENT_SOURCE"
+if grep -q "withTimeInterval: 0.75" "$AGENT_SOURCE"; then
+  echo "Background agent fallback polling should be slower because distributed notifications trigger normal syncs immediately." >&2
+  exit 1
+fi
 grep -q "terminateAfterClose: false" "$AGENT_SOURCE"
 grep -q "jobQueue.complete" "$AGENT_SOURCE"
 grep -q "jobQueue.fail" "$AGENT_SOURCE"
 grep -q "app.log" "$CONFIG_SOURCE"
 grep -q "appLogURL" "$CONFIG_SOURCE"
+grep -q "importedRecordStoreURL" "$CONFIG_SOURCE"
 grep -q "AppConfig.appLogURL" "$APP_SOURCE_DIR/AppLogger.swift"
 if grep -q 'URL(fileURLWithPath: "/tmp/local.import-to-photos"' "$APP_SOURCE_DIR/AppLogger.swift"; then
   echo "AppLogger should write to Application Support; /tmp should only be a Doctor fallback." >&2
@@ -263,6 +282,7 @@ grep -q "supportSummary" "$IMAGE_POLICY_SOURCE"
 grep -q "writeHeartbeat" "$LOGGER_SOURCE"
 grep -q "Finder Sync heartbeat" "$ROOT_DIR/Resources/ReleasePackage/Doctor.command"
 grep -q "Queue state:" "$ROOT_DIR/Resources/ReleasePackage/Doctor.command"
+grep -q "blocked=" "$ROOT_DIR/Resources/ReleasePackage/Doctor.command"
 grep -q 'FINDER_LOG="$SHARED_SUPPORT_DIR/finder-sync.log"' "$ROOT_DIR/Resources/ReleasePackage/Doctor.command"
 if grep -q "APP_LOG_FALLBACK" "$ROOT_DIR/Resources/ReleasePackage/Doctor.command"; then
   echo "Doctor should report the current app log path, not a stale /tmp fallback." >&2
@@ -272,6 +292,14 @@ grep -q 'rm -rf "$APP_DIR"' "$SCRIPT_DIR/build.sh"
 
 if grep -q "guard FileManager.default.fileExists" "$IMAGE_POLICY_SOURCE"; then
   echo "Finder Sync eligibility should not hide menu just because sandboxed fileExists fails." >&2
+  exit 1
+fi
+
+grep -q ".fileSizeKey" "$APP_SOURCE_DIR/ImageScanner.swift"
+grep -q "fileSize: values?.fileSize" "$APP_SOURCE_DIR/ImageScanner.swift"
+grep -q "fileSize: Int? = nil" "$IMAGE_POLICY_SOURCE"
+if grep -q "fileExists(atPath: url.path, isDirectory:" "$APP_SOURCE_DIR/ImageScanner.swift"; then
+  echo "ImageScanner should use enumerator-provided resource values instead of stat-ing every enumerated URL again." >&2
   exit 1
 fi
 

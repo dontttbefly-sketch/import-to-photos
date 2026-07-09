@@ -95,6 +95,8 @@ ditto "$LAUNCH_AGENT_SOURCE" "$PACKAGE_DIR/pkg-scripts/Resources/LaunchAgent/loc
 ditto "$INSTALLER_SCRIPT_SOURCE" "$PACKAGE_DIR/pkg-scripts/postinstall"
 chmod +x "$PACKAGE_DIR/pkg-scripts/postinstall"
 ditto "$TEMPLATE_DIR/README-先双击我.md" "$PACKAGE_DIR/dmg-root/README-先读我.md"
+ditto "$TEMPLATE_DIR/Doctor.command" "$PACKAGE_DIR/dmg-root/Doctor ImportToPhotos.command"
+chmod +x "$PACKAGE_DIR/dmg-root/Doctor ImportToPhotos.command"
 ditto "$TEMPLATE_DIR/Uninstall.command" "$PACKAGE_DIR/dmg-root/Uninstall ImportToPhotos.command"
 chmod +x "$PACKAGE_DIR/dmg-root/Uninstall ImportToPhotos.command"
 

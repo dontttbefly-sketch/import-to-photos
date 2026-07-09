@@ -30,6 +30,7 @@ struct FinderSyncCopyOutcome {
 enum QueueResolution {
     case complete
     case retryLater(paths: [String], stagedPaths: [String])
+    case blockedUntilAuthorization(paths: [String], stagedPaths: [String])
     case failedPermanently
 }
 
@@ -40,6 +41,10 @@ final class FinderSyncCopyService {
     init(importer: PhotosImporting, fileManager: FileManager = .default) {
         self.importer = importer
         self.fileManager = fileManager
+    }
+
+    func currentAddOnlyAccessAllowsImport() -> Bool {
+        importer.currentAddOnlyAccessAllowsImport()
     }
 
     func synchronize(
@@ -85,7 +90,7 @@ final class FinderSyncCopyService {
                     noticeKind: .needsAuthorization,
                     imported: 0,
                     failures: [],
-                    queueResolution: .retryLater(paths: urls.map(\.path), stagedPaths: []),
+                    queueResolution: .blockedUntilAuthorization(paths: urls.map(\.path), stagedPaths: []),
                     stagedPaths: [],
                     retryPaths: urls.map(\.path),
                     retryStagedPaths: []
