@@ -7,9 +7,7 @@ enum AppConfig {
     static let finderSyncExtensionContainerIdentifier = "local.import-to-photos.finder-sync"
 
     static func defaultImportFolder() -> URL {
-        if let overridePath = ProcessInfo.processInfo.environment["IMPORT_TO_PHOTOS_DEFAULT_FOLDER"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !overridePath.isEmpty {
+        if let overridePath = settingValue(named: "IMPORT_TO_PHOTOS_DEFAULT_FOLDER") {
             return URL(fileURLWithPath: overridePath).standardizedFileURL
         }
 
@@ -24,6 +22,19 @@ enum AppConfig {
             .appendingPathComponent("Pictures", isDirectory: true)
             .appendingPathComponent("ImportToPhotos", isDirectory: true)
             .standardizedFileURL
+    }
+
+    static func finderSyncKeepCopyEnabled() -> Bool {
+        guard let value = settingValue(named: "IMPORT_TO_PHOTOS_KEEP_COPY") else {
+            return false
+        }
+
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "1", "true", "yes", "on":
+            return true
+        default:
+            return false
+        }
     }
 
     static func finderSyncJobDirectory() -> URL {
@@ -87,5 +98,59 @@ enum AppConfig {
 
         return URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
             .standardizedFileURL
+    }
+
+    private static func settingValue(named name: String) -> String? {
+        if let environmentValue = ProcessInfo.processInfo.environment[name]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !environmentValue.isEmpty {
+            return environmentValue
+        }
+
+        guard let settingsValue = settingsFileValues()[name]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !settingsValue.isEmpty else {
+            return nil
+        }
+
+        return settingsValue
+    }
+
+    private static func settingsFileURL() -> URL {
+        realUserHomeDirectory()
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Application Support", isDirectory: true)
+            .appendingPathComponent("ImportToPhotos", isDirectory: true)
+            .appendingPathComponent("settings.env", isDirectory: false)
+            .standardizedFileURL
+    }
+
+    private static func settingsFileValues() -> [String: String] {
+        guard let contents = try? String(contentsOf: settingsFileURL(), encoding: .utf8) else {
+            return [:]
+        }
+
+        var values: [String: String] = [:]
+        for rawLine in contents.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty, !line.hasPrefix("#"), let separator = line.firstIndex(of: "=") else {
+                continue
+            }
+
+            let key = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
+            var value = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.count >= 2,
+               ((value.hasPrefix("\"") && value.hasSuffix("\"")) ||
+                (value.hasPrefix("'") && value.hasSuffix("'"))) {
+                value.removeFirst()
+                value.removeLast()
+            }
+
+            if !key.isEmpty {
+                values[key] = value
+            }
+        }
+
+        return values
     }
 }

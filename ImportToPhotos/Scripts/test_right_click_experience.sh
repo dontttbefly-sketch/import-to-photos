@@ -233,11 +233,15 @@ if grep -q 'URL(fileURLWithPath: "/tmp/local.import-to-photos"' "$APP_SOURCE_DIR
 fi
 grep -q "prepareCopyJobs" "$FINDER_COPY_SOURCE"
 grep -q "runCopyTest" "$FINDER_COPY_SOURCE"
+grep -q "finderSyncKeepCopyEnabled" "$FINDER_COPY_SOURCE"
+grep -q "IMPORT_TO_PHOTOS_KEEP_COPY" "$CONFIG_SOURCE"
+grep -q "settings.env" "$CONFIG_SOURCE"
 grep -q "backupURL: source" "$FINDER_COPY_SOURCE"
 grep -q "USING_SOURCE" "$FINDER_COPY_SOURCE"
 grep -q "sourceURL.path != job.backupURL.path" "$FINDER_COPY_SOURCE"
-if grep -q "copyItem" "$FINDER_COPY_SOURCE"; then
-  echo "Finder sync default behavior should import the selected source directly, not copy it first." >&2
+grep -q "copyItem" "$FINDER_COPY_SOURCE"
+if ! grep -q "guard AppConfig.finderSyncKeepCopyEnabled()" "$FINDER_COPY_SOURCE"; then
+  echo "Finder sync copies must be guarded behind the explicit keep-copy setting." >&2
   exit 1
 fi
 if grep -q "MARKED_BACKUP" "$FINDER_COPY_SOURCE" &&
@@ -288,6 +292,9 @@ grep -q -- "--restart-finder" "$SCRIPT_DIR/install_finder_extension.sh"
 grep -q "RESTART_FINDER" "$SCRIPT_DIR/install_finder_extension.sh"
 
 grep -q "./ImportToPhotos/Scripts/install_finder_extension.sh" "$ROOT_README"
+grep -q "直接把所选图片导入 Photos" "$ROOT_README"
+grep -q "IMPORT_TO_PHOTOS_KEEP_COPY=1" "$ROOT_README"
+grep -q "settings.env" "$ROOT_README"
 if grep -q "./ImportToPhotos/install_finder_extension.sh" "$ROOT_README"; then
   echo "Root README should not reference the old install_finder_extension.sh path." >&2
   exit 1

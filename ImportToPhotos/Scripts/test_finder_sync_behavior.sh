@@ -17,7 +17,10 @@ export IMPORT_TO_PHOTOS_APP_LOG_PATH="$TMP_DIR/app.log"
 
 SOURCE_DIR="$TMP_DIR/source"
 UPLOAD_DIR="$TMP_DIR/upload"
-mkdir -p "$SOURCE_DIR" "$UPLOAD_DIR"
+KEEP_COPY_DIR="$TMP_DIR/keep-copy"
+SETTINGS_HOME="$TMP_DIR/settings-home"
+SETTINGS_COPY_DIR="$TMP_DIR/settings-copy"
+mkdir -p "$SOURCE_DIR" "$UPLOAD_DIR" "$KEEP_COPY_DIR" "$SETTINGS_COPY_DIR"
 
 base64 -D > "$SOURCE_DIR/photo.png" <<'PNG'
 iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=
@@ -103,6 +106,29 @@ if [[ -e "$UPLOAD_DIR/photo.png" ]]; then
   echo "Finder sync should not create a copied photo in the upload folder." >&2
   exit 1
 fi
+
+cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/backup-mode.png"
+xattr -d "$MARKER_NAME" "$SOURCE_DIR/backup-mode.png" 2>/dev/null || true
+KEEP_COPY_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_KEEP_COPY=1 IMPORT_TO_PHOTOS_DEFAULT_FOLDER="$KEEP_COPY_DIR" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/backup-mode.png")"
+grep -q "COPIED $KEEP_COPY_DIR/backup-mode.png" <<< "$KEEP_COPY_OUTPUT"
+grep -q "MARKED_SOURCE .*backup-mode.png" <<< "$KEEP_COPY_OUTPUT"
+grep -q "MARKED_BACKUP $KEEP_COPY_DIR/backup-mode.png" <<< "$KEEP_COPY_OUTPUT"
+test -f "$KEEP_COPY_DIR/backup-mode.png"
+xattr -p "$MARKER_NAME" "$SOURCE_DIR/backup-mode.png" >/dev/null
+xattr -p "$MARKER_NAME" "$KEEP_COPY_DIR/backup-mode.png" >/dev/null
+
+mkdir -p "$SETTINGS_HOME/Library/Application Support/ImportToPhotos"
+cat > "$SETTINGS_HOME/Library/Application Support/ImportToPhotos/settings.env" <<EOF
+IMPORT_TO_PHOTOS_KEEP_COPY=1
+IMPORT_TO_PHOTOS_DEFAULT_FOLDER=$SETTINGS_COPY_DIR
+EOF
+cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/settings-mode.png"
+xattr -d "$MARKER_NAME" "$SOURCE_DIR/settings-mode.png" 2>/dev/null || true
+SETTINGS_COPY_OUTPUT="$(IMPORT_TO_PHOTOS_ENABLE_TEST_HOOKS=1 IMPORT_TO_PHOTOS_HOME_DIR="$SETTINGS_HOME" "$BINARY" --sync-copy-test-run "$SOURCE_DIR/settings-mode.png")"
+grep -q "COPIED $SETTINGS_COPY_DIR/settings-mode.png" <<< "$SETTINGS_COPY_OUTPUT"
+grep -q "MARKED_SOURCE .*settings-mode.png" <<< "$SETTINGS_COPY_OUTPUT"
+grep -q "MARKED_BACKUP $SETTINGS_COPY_DIR/settings-mode.png" <<< "$SETTINGS_COPY_OUTPUT"
+test -f "$SETTINGS_COPY_DIR/settings-mode.png"
 
 cp "$SOURCE_DIR/photo.png" "$SOURCE_DIR/retry.png"
 xattr -d "$MARKER_NAME" "$SOURCE_DIR/retry.png" 2>/dev/null || true

@@ -35,9 +35,11 @@ enum QueueResolution {
 
 final class FinderSyncCopyService {
     private let importer: PhotosImporting
+    private let fileManager: FileManager
 
-    init(importer: PhotosImporting) {
+    init(importer: PhotosImporting, fileManager: FileManager = .default) {
         self.importer = importer
+        self.fileManager = fileManager
     }
 
     func synchronize(
@@ -127,14 +129,63 @@ final class FinderSyncCopyService {
         var jobs: [FinderSyncCopyJob] = []
         var failures: [ImportFailure] = []
 
-        for sourceURL in sourceURLs {
+        guard AppConfig.finderSyncKeepCopyEnabled() else {
+            for sourceURL in sourceURLs {
+                let source = sourceURL.standardizedFileURL
+                if let failureMessage = ImageTypePolicy.importExecutionFailureMessage(for: source) {
+                    failures.append(ImportFailure(url: source, message: failureMessage, kind: .permanent))
+                    continue
+                }
+
+                jobs.append(FinderSyncCopyJob(sourceURL: source, backupURL: source))
+            }
+
+            return FinderSyncCopyPreparation(jobs: jobs, failures: failures)
+        }
+
+        let uploadFolder = AppConfig.defaultImportFolder()
+        do {
+            try fileManager.createDirectory(at: uploadFolder, withIntermediateDirectories: true)
+        } catch {
+            return FinderSyncCopyPreparation(
+                jobs: [],
+                failures: sourceURLs.map {
+                    ImportFailure(
+                        url: $0,
+                        message: error.localizedDescription,
+                        kind: .temporary,
+                        retrySourceURL: $0
+                    )
+                }
+            )
+        }
+
+        for (index, sourceURL) in sourceURLs.enumerated() {
             let source = sourceURL.standardizedFileURL
             if let failureMessage = ImageTypePolicy.importExecutionFailureMessage(for: source) {
                 failures.append(ImportFailure(url: source, message: failureMessage, kind: .permanent))
                 continue
             }
 
-            jobs.append(FinderSyncCopyJob(sourceURL: source, backupURL: source))
+            let stagedBackup = stagedBackupURL(at: index, stagedPaths: stagedPaths)
+            let backup = stagedBackup ?? nextAvailableBackupURL(for: source, in: uploadFolder)
+            if backup.path != source.path, !fileManager.fileExists(atPath: backup.path) {
+                do {
+                    try fileManager.copyItem(at: source, to: backup)
+                } catch {
+                    AppLogger.log("prepare copy failed source=\(source.path) backup=\(backup.path) error=\(error.localizedDescription)")
+                    failures.append(ImportFailure(
+                        url: source,
+                        message: error.localizedDescription,
+                        kind: .temporary,
+                        retrySourceURL: source,
+                        retryStagedURL: backup
+                    ))
+                    continue
+                }
+            }
+
+            jobs.append(FinderSyncCopyJob(sourceURL: source, backupURL: backup))
         }
 
         return FinderSyncCopyPreparation(jobs: jobs, failures: failures)
@@ -251,7 +302,8 @@ final class FinderSyncCopyService {
                     url: job.backupURL,
                     message: errorMessage ?? "Unknown error",
                     kind: .temporary,
-                    retrySourceURL: job.sourceURL
+                    retrySourceURL: job.sourceURL,
+                    retryStagedURL: job.sourceURL.path == job.backupURL.path ? nil : job.backupURL
                 ))
             }
 
@@ -301,5 +353,46 @@ final class FinderSyncCopyService {
         }
 
         return (paths, stagedPaths)
+    }
+
+    private func nextAvailableBackupURL(for sourceURL: URL, in uploadFolder: URL) -> URL {
+        let source = sourceURL.standardizedFileURL
+        let folder = uploadFolder.standardizedFileURL
+
+        if source.deletingLastPathComponent().path == folder.path {
+            return source
+        }
+
+        let baseName = source.deletingPathExtension().lastPathComponent
+        let fileExtension = source.pathExtension
+        var candidate = folder.appendingPathComponent(source.lastPathComponent)
+        var suffix = 2
+
+        while fileManager.fileExists(atPath: candidate.path) {
+            if fileManager.contentsEqual(atPath: source.path, andPath: candidate.path) {
+                return candidate.standardizedFileURL
+            }
+
+            let fileName = fileExtension.isEmpty
+                ? "\(baseName) \(suffix)"
+                : "\(baseName) \(suffix).\(fileExtension)"
+            candidate = folder.appendingPathComponent(fileName)
+            suffix += 1
+        }
+
+        return candidate.standardizedFileURL
+    }
+
+    private func stagedBackupURL(at index: Int, stagedPaths: [String]) -> URL? {
+        guard stagedPaths.indices.contains(index) else {
+            return nil
+        }
+
+        let path = stagedPaths[index].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else {
+            return nil
+        }
+
+        return URL(fileURLWithPath: path).standardizedFileURL
     }
 }
