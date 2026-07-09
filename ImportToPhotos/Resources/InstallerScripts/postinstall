@@ -30,6 +30,25 @@ GUI_DOMAIN="gui/$CONSOLE_UID"
 
 echo "Configuring ImportToPhotos for $CONSOLE_USER"
 
+PROMPT_RESULT="$(launchctl asuser "$CONSOLE_UID" /usr/bin/osascript <<'OSA' 2>/dev/null || true
+set dialogResult to display dialog "ImportToPhotos 是后台工具，没有主窗口。\n\n安装完成后不需要手动打开 app。确认启动后会立即启用 Finder 右键同步；以后每次登录会自动启动后台服务。\n\n入口：在 Finder 里右键图片，选择“同步进相册”。\n卸载：重新打开 DMG，运行 Uninstall ImportToPhotos.command。" buttons {"稍后", "确认启动"} default button "确认启动" with title "ImportToPhotos" with icon note giving up after 120
+if gave up of dialogResult then
+    return "确认启动"
+else
+    return button returned of dialogResult
+end if
+OSA
+)"
+if [[ -z "$PROMPT_RESULT" ]]; then
+  PROMPT_RESULT="确认启动"
+fi
+
+if [[ "$PROMPT_RESULT" != "确认启动" ]]; then
+  echo "ImportToPhotos app is installed. Background service startup was skipped by user choice."
+  echo "Run the installer again when you want to enable Finder right-click sync."
+  exit 0
+fi
+
 xattr -dr com.apple.quarantine "$APP_INSTALL_DIR" 2>/dev/null || true
 mkdir -p "$USER_HOME/Library/Services" "$USER_HOME/Library/LaunchAgents"
 rm -rf "$OLD_SERVICE_INSTALL_DIR" "$SERVICE_INSTALL_DIR"

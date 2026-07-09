@@ -40,7 +40,12 @@ test ! -f "$PACKAGE_DIR/Doctor.command"
 test ! -f "$PACKAGE_DIR/Uninstall.command"
 
 test -f "$PACKAGE_DIR/dmg-root/README-先读我.md"
+test -f "$PACKAGE_DIR/dmg-root/Uninstall ImportToPhotos.command"
+test -x "$PACKAGE_DIR/dmg-root/Uninstall ImportToPhotos.command"
 grep -q "Install ImportToPhotos.pkg" "$PACKAGE_DIR/dmg-root/README-先读我.md"
+grep -q "安装完成后不需要手动打开 app" "$PACKAGE_DIR/dmg-root/README-先读我.md"
+grep -q "登录后会自动启动后台服务" "$PACKAGE_DIR/dmg-root/README-先读我.md"
+grep -q "Uninstall ImportToPhotos.command" "$PACKAGE_DIR/dmg-root/README-先读我.md"
 grep -q "Photos 权限" "$PACKAGE_DIR/dmg-root/README-先读我.md"
 grep -q "★ 同步进相册" "$PACKAGE_DIR/dmg-root/README-先读我.md"
 grep -q "GitHub Release" "$PACKAGE_DIR/dmg-root/README-先读我.md"
@@ -65,6 +70,10 @@ if [[ -e "$TEST_HOME/Pictures/ImportToPhotos/photo.png" ]]; then
 fi
 
 grep -q "stat -f %Su /dev/console" "$PACKAGE_DIR/pkg-scripts/postinstall"
+grep -q "display dialog" "$PACKAGE_DIR/pkg-scripts/postinstall"
+grep -q "确认启动" "$PACKAGE_DIR/pkg-scripts/postinstall"
+grep -q "安装完成后不需要手动打开 app" "$PACKAGE_DIR/pkg-scripts/postinstall"
+grep -q "以后每次登录会自动启动" "$PACKAGE_DIR/pkg-scripts/postinstall"
 grep -q "Library/Services" "$PACKAGE_DIR/pkg-scripts/postinstall"
 grep -q "Library/LaunchAgents" "$PACKAGE_DIR/pkg-scripts/postinstall"
 grep -q "pluginkit -e use" "$PACKAGE_DIR/pkg-scripts/postinstall"
@@ -89,6 +98,7 @@ detach_dmg() {
 trap detach_dmg EXIT
 test -f "$MOUNT_DIR/Install ImportToPhotos.pkg"
 test -f "$MOUNT_DIR/README-先读我.md"
+test -f "$MOUNT_DIR/Uninstall ImportToPhotos.command"
 if [[ -e "$MOUNT_DIR/Install.command" ]]; then
   echo "Release DMG must not expose Install.command as the primary installer." >&2
   exit 1
@@ -98,4 +108,7 @@ grep -q "package_release.sh --universal" "$ROOT_DIR/../README.md"
 grep -q "GitHub Release" "$ROOT_DIR/../README.md"
 grep -q "下载.*dmg" "$ROOT_DIR/../README.md"
 grep -q "Install ImportToPhotos.pkg" "$ROOT_DIR/../README.md"
+grep -q "安装完成后不需要手动打开 app" "$ROOT_DIR/../README.md"
+grep -q "登录后会自动启动后台服务" "$ROOT_DIR/../README.md"
+grep -q "Uninstall ImportToPhotos.command" "$ROOT_DIR/../README.md"
 grep -q "不要点.*Code.*Download ZIP" "$ROOT_DIR/../README.md"

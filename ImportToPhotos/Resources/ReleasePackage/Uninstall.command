@@ -40,7 +40,12 @@ pluginkit -e ignore -i "$EXTENSION_ID" >/dev/null 2>&1 || true
 rm -rf "$SERVICE_INSTALL_DIR"
 rm -rf "$OLD_SERVICE_INSTALL_DIR"
 rm -f "$LAUNCH_AGENT_INSTALL"
-rm -rf "$APP_DIR"
+
+if [[ -d "$APP_DIR" ]]; then
+  /usr/bin/osascript <<'OSA'
+do shell script "/bin/rm -rf /Applications/ImportToPhotos.app" with administrator privileges
+OSA
+fi
 
 /System/Library/CoreServices/pbs -flush >/dev/null 2>&1 || true
 killall pbs >/dev/null 2>&1 || true

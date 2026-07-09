@@ -8,8 +8,10 @@
 2. 双击打开 dmg。
 3. 双击 `Install ImportToPhotos.pkg`。
 4. 按 macOS Installer 提示完成安装。
-5. 安装完成后，第一次同步图片时，请允许 Photos 权限。
-6. 在 Finder 里右键未同步图片，优先找 `★ 同步进相册`。如果顶层菜单没出现，请到“快速操作”或“服务”里找 `★ 同步进相册`。
+5. 安装结束时会弹出说明框，选择“确认启动”即可立即启用后台服务和 Finder 右键同步。
+6. 安装完成后不需要手动打开 app；它没有主窗口。以后每次登录后会自动启动后台服务。
+7. 第一次同步图片时，请允许 Photos 权限。
+8. 在 Finder 里右键未同步图片，优先找 `★ 同步进相册`。如果顶层菜单没出现，请到“快速操作”或“服务”里找 `★ 同步进相册`。
 
 右键同步会直接导入所选图片；成功后只标记源文件，不额外复制或留存副本。
 如需保留副本，请参考 GitHub README 里的备份设置。
@@ -26,4 +28,4 @@
 
 ## 卸载
 
-删除 `/Applications/ImportToPhotos.app`，并移除 `~/Library/Services/★ 同步进相册.workflow` 和 `~/Library/LaunchAgents/local.import-to-photos.agent.plist`。
+重新打开 dmg，双击 `Uninstall ImportToPhotos.command`。它会移除 app、Finder 右键服务和登录后台服务。
