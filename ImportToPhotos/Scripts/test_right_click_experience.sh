@@ -119,6 +119,12 @@ fi
 grep -q "realUserHomeDirectory" "$CONFIG_SOURCE"
 grep -q "getpwuid" "$CONFIG_SOURCE"
 grep -q "AppConfig.realUserHomeDirectory" "$EXTENSION_SOURCE"
+grep -q "monitoredDirectories" "$EXTENSION_SOURCE"
+grep -q "Desktop" "$EXTENSION_SOURCE"
+grep -q "Downloads" "$EXTENSION_SOURCE"
+grep -q "Pictures" "$EXTENSION_SOURCE"
+grep -q "Documents" "$EXTENSION_SOURCE"
+grep -q "standardHomeChild" "$EXTENSION_SOURCE"
 
 if grep -R -q "refreshEligibleBadges" "$EXTENSION_SOURCE_DIR"; then
   echo "Finder Sync should not eagerly refresh badges by scanning opened directories." >&2
@@ -295,6 +301,8 @@ grep -q "./ImportToPhotos/Scripts/install_finder_extension.sh" "$ROOT_README"
 grep -q "直接把所选图片导入 Photos" "$ROOT_README"
 grep -q "IMPORT_TO_PHOTOS_KEEP_COPY=1" "$ROOT_README"
 grep -q "settings.env" "$ROOT_README"
+grep -q "桌面" "$ROOT_README"
+grep -q "快速操作/服务" "$ROOT_README"
 if grep -q "./ImportToPhotos/install_finder_extension.sh" "$ROOT_README"; then
   echo "Root README should not reference the old install_finder_extension.sh path." >&2
   exit 1

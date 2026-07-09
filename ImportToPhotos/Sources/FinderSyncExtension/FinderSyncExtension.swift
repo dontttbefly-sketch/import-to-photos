@@ -91,7 +91,18 @@ final class FinderSyncExtension: FIFinderSync {
     }
 
     private func monitoredDirectories() -> Set<URL> {
-        Set([AppConfig.realUserHomeDirectory().standardizedFileURL])
+        let home = AppConfig.realUserHomeDirectory().standardizedFileURL
+        return Set([
+            home,
+            standardHomeChild("Desktop", under: home),
+            standardHomeChild("Downloads", under: home),
+            standardHomeChild("Pictures", under: home),
+            standardHomeChild("Documents", under: home)
+        ])
+    }
+
+    private func standardHomeChild(_ name: String, under home: URL) -> URL {
+        home.appendingPathComponent(name, isDirectory: true).standardizedFileURL
     }
 
     private func selectedItemURLsForMenu() -> [URL] {
